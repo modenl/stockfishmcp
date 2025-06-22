@@ -20,18 +20,17 @@ class StdioMCPServer {
   }
 
   silenceNonJsonOutput() {
-    // 重定向 console.log 到 stderr，避免污染 MCP 协议
+    // 重定向所有 console 输出到 stderr，确保 stdout 只有 JSON-RPC 消息
     const originalConsoleLog = console.log;
     const originalConsoleError = console.error;
     const originalConsoleWarn = console.warn;
+    const originalConsoleInfo = console.info;
+    
+    // 保存原始的 stdout.write 用于发送 JSON-RPC 消息
+    this.originalStdoutWrite = process.stdout.write.bind(process.stdout);
     
     console.log = (...args) => {
-      // MCP 协议输出通过 this.sendResponse 发送，其他输出重定向到 stderr
-      if (args.length === 1 && typeof args[0] === 'string' && args[0].startsWith('{"jsonrpc"')) {
-        originalConsoleLog(...args);
-      } else {
-        process.stderr.write('[MCP] ' + args.join(' ') + '\n');
-      }
+      process.stderr.write('[MCP LOG] ' + args.join(' ') + '\n');
     };
     
     console.error = (...args) => {
@@ -41,16 +40,29 @@ class StdioMCPServer {
     console.warn = (...args) => {
       process.stderr.write('[MCP WARN] ' + args.join(' ') + '\n');
     };
+
+    console.info = (...args) => {
+      process.stderr.write('[MCP INFO] ' + args.join(' ') + '\n');
+    };
+
+    // 禁用所有其他可能的输出
+    process.on('warning', (warning) => {
+      process.stderr.write(`[MCP WARNING] ${warning.name}: ${warning.message}\n`);
+    });
   }
 
   setupHandlers() {
     this.rl.on('line', async (line) => {
       try {
+        if (!line.trim()) return; // 忽略空行
+        
         const request = JSON.parse(line);
         const response = await this.handleRequest(request);
-        this.sendResponse(response);
+        if (response) {
+          this.sendResponse(response);
+        }
       } catch (error) {
-        this.sendError(error.message, this.requestId);
+        this.sendError(`Invalid JSON: ${error.message}`, null);
       }
     });
 
@@ -58,13 +70,19 @@ class StdioMCPServer {
       process.exit(0);
     });
 
-    // Handle process termination
+    // Handle process termination gracefully
     process.on('SIGINT', () => {
       this.rl.close();
     });
 
     process.on('SIGTERM', () => {
       this.rl.close();
+    });
+
+    process.on('uncaughtException', (error) => {
+      process.stderr.write(`[MCP UNCAUGHT] ${error.message}\n`);
+      this.sendError(`Internal error: ${error.message}`, null);
+      process.exit(1);
     });
   }
 
@@ -74,6 +92,10 @@ class StdioMCPServer {
     switch (request.method) {
       case 'initialize':
         return this.handleInitialize(request);
+      
+      case 'initialized':
+        // 客户端发送的 initialized 通知，不需要响应
+        return null;
       
       case 'tools/list':
         const tools = await this.mcpServer.listTools();
@@ -130,14 +152,15 @@ class StdioMCPServer {
         },
         serverInfo: {
           name: 'chess-trainer-mcp',
-          version: '1.0.1'
+          version: '1.0.3'
         }
       }
     };
   }
 
   sendResponse(response) {
-    console.log(JSON.stringify(response));
+    // 直接写入 stdout，确保纯净的 JSON 输出
+    this.originalStdoutWrite(JSON.stringify(response) + '\n');
   }
 
   sendError(message, id = null) {
@@ -149,19 +172,9 @@ class StdioMCPServer {
         message: message
       }
     };
-    console.log(JSON.stringify(error));
-  }
-
-  start() {
-    // Send initialization complete notification
-    this.sendResponse({
-      jsonrpc: '2.0',
-      method: 'initialized',
-      params: {}
-    });
+    this.originalStdoutWrite(JSON.stringify(error) + '\n');
   }
 }
 
-// Start the server
-const server = new StdioMCPServer();
-server.start(); 
+// Start the server - 不发送任何初始化消息
+const server = new StdioMCPServer(); 
