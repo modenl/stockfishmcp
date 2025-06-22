@@ -21,6 +21,9 @@ class ChessTrainerServer {
     this.mcpClient = new MCPClient();
     this.clients = new Map(); // sessionId -> ws connection
     
+    // Increase max listeners to prevent warning
+    this.server.setMaxListeners(20);
+    
     this.setupMiddleware();
     this.setupRoutes();
     this.setupWebSocket();
@@ -269,6 +272,38 @@ class ChessTrainerServer {
       console.log(`Chess Trainer MCP Server running on port ${port}`);
       console.log(`GUI available at http://localhost:${port}`);
       console.log(`WebSocket at ws://localhost:${port}/ws`);
+    });
+  }
+
+  shutdown() {
+    console.log('Shutting down Chess Trainer MCP Server...');
+    
+    // Close all WebSocket connections
+    this.wss.clients.forEach(ws => {
+      if (ws.readyState === ws.OPEN) {
+        ws.close(1000, 'Server shutting down');
+      }
+    });
+    
+    // Close WebSocket server
+    this.wss.close((err) => {
+      if (err) {
+        console.error('Error closing WebSocket server:', err);
+      } else {
+        console.log('WebSocket server closed');
+      }
+    });
+    
+    // Clear client mappings
+    this.clients.clear();
+    
+    // Close HTTP server
+    this.server.close((err) => {
+      if (err) {
+        console.error('Error closing HTTP server:', err);
+      } else {
+        console.log('HTTP server closed');
+      }
     });
   }
 }
