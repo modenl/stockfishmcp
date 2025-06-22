@@ -15,5 +15,15 @@
     "processed": false,
     "type": "reset_game",
     "gameId": "test_game_123"
+  },
+  {
+    "id": "cmd_1750629169175_fr4i2d9cl",
+    "timestamp": "2025-06-22T21:52:49.175Z",
+    "processed": false,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "Nc6",
+    "sanMove": "Nc6",
+    "newFen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2"
   }
 ]
