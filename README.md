@@ -402,23 +402,74 @@ npm install -g chess-trainer-mcp
 # ✅ Correct: npx --package=chess-trainer-mcp chess-trainer-mcp-server
 ```
 
-#### 3. "No tools discovered"
+#### 3. "Connection closed" or "MCP error -32000"
+This usually indicates npm cache issues or version conflicts.
+
+**Quick Fix:**
+```bash
+# Clear npm cache
+npm cache clean --force
+
+# Clear npx cache
+rm -rf ~/.npm/_npx
+
+# Use local path configuration (recommended for development)
+```
+
+**Local Path Configuration (Most Reliable):**
+```json
+{
+  "mcpServers": {
+    "chess-trainer-mcp": {
+      "transportType": "stdio",
+      "command": "node",
+      "args": ["/path/to/stockfishmcp/bin/mcp-server.js"],
+      "cwd": "/path/to/stockfishmcp"
+    }
+  }
+}
+```
+
+#### 4. "No tools discovered"
 - Check MCP configuration file format and path
 - Ensure proper JSON syntax
 - Restart MCP host application
+- Verify server initialization with test command
 
-#### 4. "Connection timeout"
+#### 5. "Connection timeout"
 - Check network connectivity
 - Verify npm package installation
 - Try local path configuration
+- Ensure no port conflicts
 
 ### Testing MCP Server
 
+#### Basic Connection Test
 ```bash
-# Test if server responds
+# Test if server responds (using npx)
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | npx --package=chess-trainer-mcp chess-trainer-mcp-server
 
-# Should return initialization response with server info
+# Test using local path (if you have the source)
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | node /path/to/stockfishmcp/bin/mcp-server.js
+
+# Should return: {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05",...}}
+```
+
+#### Test Tool Discovery
+```bash
+# List all available tools
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | node bin/mcp-server.js
+
+# Should return 14 tools including interactive game tools
+```
+
+#### Test Interactive Features
+```bash
+# Test listing active games
+echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_active_games","arguments":{}}}' | node bin/mcp-server.js
+
+# Test position analysis
+echo '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"analyze_position","arguments":{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}}}' | node bin/mcp-server.js
 ```
 
 ## 🛠️ Development
