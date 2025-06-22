@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+
+import { ChessTrainerServer } from '../server/index.js';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Configuration from environment variables
+const config = {
+  port: process.env.PORT || 3456,
+  mcpHostUrl: process.env.MCP_HOST_URL || 'http://localhost:3000/mcp/inbound',
+  mcpEnabled: process.env.MCP_ENABLED !== 'false',
+  logLevel: process.env.LOG_LEVEL || 'info'
+};
+
+// Print banner
+console.log(`
+╔═══════════════════════════════════════╗
+║        Chess Trainer MCP Server       ║
+║              Version 1.0.0            ║
+╚═══════════════════════════════════════╝
+`);
+
+console.log('Configuration:');
+console.log(`  Port: ${config.port}`);
+console.log(`  MCP Host: ${config.mcpHostUrl}`);
+console.log(`  MCP Enabled: ${config.mcpEnabled}`);
+console.log(`  Log Level: ${config.logLevel}`);
+console.log('');
+
+// Handle process termination gracefully
+let server;
+
+process.on('SIGINT', () => {
+  console.log('\nShutting down Chess Trainer MCP Server...');
+  if (server) {
+    server.server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+});
+
+process.on('SIGTERM', () => {
+  console.log('\nReceived SIGTERM, shutting down...');
+  if (server) {
+    server.server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+// Start the server
+try {
+  server = new ChessTrainerServer();
+  server.start(config.port);
+} catch (error) {
+  console.error('Failed to start server:', error);
+  process.exit(1);
+} 

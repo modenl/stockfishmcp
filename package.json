@@ -1,0 +1,34 @@
+{
+  "name": "chess-trainer-mcp",
+  "version": "1.0.0",
+  "description": "Chess Trainer MCP Server with Stockfish WASM integration",
+  "main": "server/index.js",
+  "type": "module",
+  "bin": {
+    "chess-trainer-mcp": "./bin/chess-trainer-mcp"
+  },
+  "scripts": {
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "build": "npm run client:build",
+    "start": "node server/index.js",
+    "server:dev": "nodemon server/index.js",
+    "client:dev": "cd client && npm run dev",
+    "client:build": "cd client && npm run build",
+    "client:install": "cd client && npm install"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.1",
+    "uuid": "^9.0.1",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "ajv": "^8.12.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "concurrently": "^8.2.2"
+  },
+  "keywords": ["chess", "mcp", "stockfish", "trainer", "analysis"],
+  "author": "Chess Trainer MCP",
+  "license": "MIT"
+} 
