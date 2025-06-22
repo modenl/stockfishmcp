@@ -1,1 +1,31 @@
-{}
+{
+  "test_game_123": {
+    "gameId": "test_game_123",
+    "active": true,
+    "startTime": "2024-12-19T14:45:00.000Z",
+    "mode": "play",
+    "moves": [
+      {
+        "san": "e4",
+        "uci": "e2e4",
+        "ply": 1,
+        "timestamp": "2024-12-19T14:45:10.000Z"
+      },
+      {
+        "san": "e5",
+        "uci": "e7e5",
+        "ply": 2,
+        "timestamp": "2024-12-19T14:45:25.000Z"
+      },
+      {
+        "san": "Nf3",
+        "uci": "Nf3",
+        "ply": 3,
+        "timestamp": "2025-06-22T21:47:39.853Z"
+      }
+    ],
+    "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2",
+    "turn": "black",
+    "lastUpdated": "2025-06-22T21:47:39.854Z"
+  }
+}
