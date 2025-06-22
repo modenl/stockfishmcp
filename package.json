@@ -5,7 +5,8 @@
   "main": "server/index.js",
   "type": "module",
   "bin": {
-    "chess-trainer-mcp": "bin/chess-trainer-mcp"
+    "chess-trainer-mcp": "bin/chess-trainer-mcp",
+    "chess-trainer-mcp-server": "bin/mcp"
   },
   "scripts": {
     "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",

@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+
+// 专门的 MCP 入口点 - 不输出任何横幅或配置信息
+// 直接启动 MCP 服务器，确保协议合规
+
+import './mcp-server.js'; 
