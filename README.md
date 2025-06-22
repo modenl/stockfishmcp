@@ -20,14 +20,15 @@ A comprehensive chess training application with AI-powered analysis using Stockf
 - **Board Flipping**: View games from both perspectives
 
 ### 🤖 MCP Integration
-- **Session Management**: Track games, moves, and performance metrics
-- **AI Coaching**: Send training data and receive coaching via MCP protocol
-- **Adaptive Cards**: Contextual tips and analysis from AI coaches
-- **Performance Analytics**: Track improvement over time
+- **9 Chess Analysis Tools**: Complete set of MCP tools for AI assistants
+- **Position Analysis**: Analyze any chess position with Stockfish
+- **Move Evaluation**: Get detailed move quality assessments
+- **Opening Explanations**: Learn chess opening principles
+- **UI Management**: Start/stop chess interface from AI assistants
 
 ## 🚀 Quick Start
 
-### 🎯 One-Command Setup (Recommended)
+### 🎯 Web Interface (One-Command Setup)
 
 ```bash
 # Run directly with npx - no installation needed!
@@ -39,27 +40,152 @@ This will automatically:
 - Build the frontend
 - Start the server on http://localhost:3456
 
-### 📦 Alternative Installation Methods
+### 🤖 MCP Integration for AI Assistants
 
-#### Method 1: NPX with Setup
-```bash
-# First-time setup
-npx chess-trainer-mcp setup
+Chess Trainer MCP Server provides 9 powerful chess analysis tools that can be used by AI assistants like Claude, Cursor, and other MCP-compatible hosts.
 
-# Then start the server
-npx chess-trainer-mcp start
+#### Available Tools:
+1. **`analyze_position`** - Analyze chess positions using Stockfish engine
+2. **`evaluate_move`** - Evaluate move quality and get detailed analysis
+3. **`get_best_moves`** - Get best move recommendations for any position
+4. **`explain_opening`** - Explain chess opening principles and theory
+5. **`validate_fen`** - Validate FEN strings and get position information
+6. **`generate_pgn`** - Generate PGN from move sequences
+7. **`start_chess_ui`** - Start the Chess Trainer web interface
+8. **`stop_chess_ui`** - Stop the UI server
+9. **`start_chess_game`** - Start a chess game and automatically open browser
+
+## 🔧 MCP Host Configuration
+
+### 🎯 Quick Configuration (Recommended)
+
+#### Method 1: Using npx with --package flag
+```json
+{
+  "mcpServers": {
+    "chess-trainer-mcp": {
+      "transportType": "stdio",
+      "command": "npx",
+      "args": ["--package=chess-trainer-mcp", "chess-trainer-mcp-server"]
+    }
+  }
+}
 ```
 
-#### Method 2: Global Installation
+#### Method 2: Pre-install for faster startup
+```bash
+# First install globally
+npm install -g chess-trainer-mcp
+
+# Then configure
+{
+  "mcpServers": {
+    "chess-trainer-mcp": {
+      "transportType": "stdio",
+      "command": "chess-trainer-mcp-server"
+    }
+  }
+}
+```
+
+### 🛠️ Host-Specific Configuration
+
+#### Claude Desktop (Anthropic)
+**Config file**: 
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "chess-trainer-mcp": {
+      "command": "npx",
+      "args": ["--package=chess-trainer-mcp", "chess-trainer-mcp-server"]
+    }
+  }
+}
+```
+
+#### Cursor IDE
+**Config file**: `~/.cursor/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "chess-trainer-mcp": {
+      "transportType": "stdio",
+      "command": "npx", 
+      "args": ["--package=chess-trainer-mcp", "chess-trainer-mcp-server"]
+    }
+  }
+}
+```
+
+#### Continue.dev
+**Config file**: `~/.continue/config.json`
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "chess-trainer-mcp",
+      "command": "npx",
+      "args": ["--package=chess-trainer-mcp", "chess-trainer-mcp-server"]
+    }
+  ]
+}
+```
+
+#### Other MCP Hosts
+```json
+{
+  "servers": {
+    "chess-trainer-mcp": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["--package=chess-trainer-mcp", "chess-trainer-mcp-server"]
+    }
+  }
+}
+```
+
+### 🧪 Testing MCP Configuration
+
+```bash
+# Test server initialization
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | npx --package=chess-trainer-mcp chess-trainer-mcp-server
+
+# Test tools discovery
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | npx --package=chess-trainer-mcp chess-trainer-mcp-server
+
+# Test position validation
+echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"validate_fen","arguments":{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}}}' | npx --package=chess-trainer-mcp chess-trainer-mcp-server
+```
+
+## 📦 Installation Methods
+
+### Method 1: NPX (No Installation)
+```bash
+# Start web interface
+npx chess-trainer-mcp
+
+# Use as MCP server
+npx --package=chess-trainer-mcp chess-trainer-mcp-server
+```
+
+### Method 2: Global Installation
 ```bash
 # Install globally
 npm install -g chess-trainer-mcp
 
-# Run from anywhere
+# Start web interface
 chess-trainer-mcp
+
+# Use as MCP server
+chess-trainer-mcp-server
 ```
 
-#### Method 3: Clone and Build
+### Method 3: Local Development
 ```bash
 # Clone the repository
 git clone https://github.com/modenl/stockfishmcp.git
@@ -68,162 +194,192 @@ cd stockfishmcp
 # Install and build
 npm run setup
 
-# Start the server
+# Start web interface
 npm start
+
+# Use as MCP server
+node bin/mcp-server.js
 ```
 
-### 🛠️ Command Options
+## 🛠️ Command Options
 
 ```bash
-# Basic usage
+# Web Interface Commands
 npx chess-trainer-mcp                    # Start on default port 3456
 npx chess-trainer-mcp --port 8080       # Start on custom port
 npx chess-trainer-mcp --no-mcp          # Disable MCP integration
-
-# Development
 npx chess-trainer-mcp dev               # Development mode with hot reload
 npx chess-trainer-mcp build             # Build frontend only
 npx chess-trainer-mcp setup             # Install dependencies and build
-
-# Help
 npx chess-trainer-mcp help              # Show all available options
+
+# MCP Server Commands
+npx --package=chess-trainer-mcp chess-trainer-mcp-server  # Start MCP server
+chess-trainer-mcp-server                                  # If globally installed
 ```
 
-The application will be available at `http://localhost:3456` (or your specified port)
+## 🎮 Usage Examples
 
-### Development Mode
+### Using with AI Assistants
 
-```bash
-# Start development server with hot reload
-npm run dev
+Once configured, you can ask your AI assistant to:
+
+```
+"Analyze this chess position: rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+
+"What are the best moves for White in the starting position?"
+
+"Explain the Italian Game opening"
+
+"Start a chess game for me"
+
+"Validate this FEN: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 ```
 
-This starts both the server (with nodemon) and the client (with Vite) concurrently.
+### Web Interface Usage
 
-## 🎮 Usage
+1. **Playing Chess**:
+   - Click "New Game" to start
+   - Choose Human vs Human or Human vs AI
+   - Configure AI strength (800-2800 ELO) and thinking time
 
-### Playing Chess
-1. Click "New Game" to start
-2. Choose game mode:
-   - **Human vs Human**: Local two-player game
-   - **Human vs AI**: Play against Stockfish engine
-3. For AI games, configure:
-   - **Your Color**: White or Black
-   - **AI Strength**: 800-2800 ELO
-   - **Thinking Time**: 0.2-5 seconds per move
+2. **Analysis**:
+   - Make moves on the board
+   - Click "Analyze Position" for engine evaluation
+   - View evaluation bar and best moves
 
-### Analysis
-1. Make moves on the board
-2. Click "Analyze Position" for engine evaluation
-3. View evaluation in the sidebar and evaluation bar
-4. Best moves are highlighted on the board
-
-### Replay
-1. Click "Game Replay 📺" to open replay menu
-2. Choose what to replay:
-   - Current game (if moves exist)
-   - Scholar's Mate (4-move checkmate)
-   - Italian Game (classic opening)
-   - Sicilian Defense (popular defense)
-3. Use replay controls to navigate through the game
+3. **Replay**:
+   - Click "Game Replay 📺" to open replay menu
+   - Choose from current game or sample games
+   - Use controls to navigate through moves
 
 ## 🏗️ Architecture
 
+### Web Server vs MCP Server
+
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                MCP Host (LLM Coach)                     │
-│  • Receives training data via MCP protocol             │
-│  • Provides AI coaching and analysis                   │
-│  • Sends adaptive cards with tips                      │
-└─────────────▲───────────────────────────────────────────┘
-              │ HTTP/WebSocket (JSON-MCP)
-              │
-┌─────────────┴───────────────────────────────────────────┐
-│              Chess Trainer MCP Server                  │
-│  • Express + WebSocket API                             │
-│  • Session management                                  │
-│  • Serves frontend SPA                                 │
-│  • Aggregates chess data → MCP actions                 │
-└─────────────▲───────────────────────────────────────────┘
-              │ WebSocket events
-              │
-┌─────────────┴───────────────────────────────────────────┐
-│              Frontend (Svelte + Vite)                  │
-│  • Chessground board interface                         │
-│  • Stockfish NNUE engine (WebAssembly)                 │
-│  • Real-time evaluation and analysis                   │
-│  • Game replay and learning tools                      │
-└─────────────────────────────────────────────────────────┘
+│                   User Commands                         │
+│  npx chess-trainer-mcp  │  npx chess-trainer-mcp-server │
+└─────────────┬───────────┴─────────────┬─────────────────┘
+              │                         │
+              ▼                         ▼
+┌─────────────────────────┐   ┌─────────────────────────────┐
+│     Web Server          │   │      MCP Server             │
+│  (ChessTrainerServer)   │   │  (StdioMCPServer)          │
+│  • Port 3456            │   │  • STDIO Communication     │
+│  • Web Interface        │   │  • JSON-RPC 2.0 Protocol   │
+│  • Game Management      │   │  • Tool Discovery           │
+│  • Contains MCP Client  │   │  • 9 Chess Analysis Tools  │
+└─────────────────────────┘   └─────────────────────────────┘
+              │                         │
+              ▼                         ▼
+┌─────────────────────────┐   ┌─────────────────────────────┐
+│    Frontend (Svelte)    │   │    MCPServer Class          │
+│  • Interactive Board    │   │  • analyze_position         │
+│  • Stockfish Engine     │   │  • evaluate_move            │
+│  • Game Replay          │   │  • get_best_moves           │
+│  • Real-time Analysis   │   │  • explain_opening          │
+└─────────────────────────┘   │  • validate_fen             │
+                              │  • generate_pgn             │
+                              │  • start_chess_ui           │
+                              │  • stop_chess_ui            │
+                              │  • start_chess_game         │
+                              └─────────────────────────────┘
 ```
 
 ## 🔧 Configuration
 
-Configure via environment variables:
+### Environment Variables
+```bash
+# Web Server Configuration
+PORT=3456                                    # Server port
+MCP_HOST_URL=http://localhost:3000/mcp/inbound  # MCP host endpoint
+MCP_ENABLED=true                             # Enable/disable MCP integration
+LOG_LEVEL=info                               # Logging level
+
+# Development
+NODE_ENV=development                         # Environment mode
+```
+
+### Advanced Configuration
+
+#### Local Development with Custom Path
+```json
+{
+  "mcpServers": {
+    "chess-trainer-mcp": {
+      "transportType": "stdio",
+      "command": "node",
+      "args": ["/path/to/stockfishmcp/bin/mcp-server.js"]
+    }
+  }
+}
+```
+
+#### With Specific Version
+```json
+{
+  "mcpServers": {
+    "chess-trainer-mcp": {
+      "transportType": "stdio", 
+      "command": "npx",
+      "args": ["--package=chess-trainer-mcp@1.0.5", "chess-trainer-mcp-server"]
+    }
+  }
+}
+```
+
+#### Debug Mode
+```json
+{
+  "mcpServers": {
+    "chess-trainer-mcp": {
+      "transportType": "stdio",
+      "command": "node",
+      "args": ["--inspect", "/path/to/stockfishmcp/bin/mcp-server.js"],
+      "env": {
+        "NODE_ENV": "development"
+      }
+    }
+  }
+}
+```
+
+## ⚠️ Troubleshooting
+
+### Common Issues
+
+#### 1. "Command not found" error
+```bash
+# Solution: Install the package
+npm install -g chess-trainer-mcp
+```
+
+#### 2. "JSON parsing errors" in MCP host
+```bash
+# Problem: Using wrong entry point
+# ❌ Wrong: npx chess-trainer-mcp
+# ✅ Correct: npx --package=chess-trainer-mcp chess-trainer-mcp-server
+```
+
+#### 3. "No tools discovered"
+- Check MCP configuration file format and path
+- Ensure proper JSON syntax
+- Restart MCP host application
+
+#### 4. "Connection timeout"
+- Check network connectivity
+- Verify npm package installation
+- Try local path configuration
+
+### Testing MCP Server
 
 ```bash
-# Server port (default: 3456)
-PORT=3456
+# Test if server responds
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | npx --package=chess-trainer-mcp chess-trainer-mcp-server
 
-# MCP Host URL for sending coaching data
-MCP_HOST_URL=http://localhost:3000/mcp/inbound
-
-# Enable/disable MCP integration (default: true)
-MCP_ENABLED=true
-
-# Log level (default: info)
-LOG_LEVEL=info
-```
-
-## 📡 MCP Protocol
-
-### Outbound Actions (To Coach)
-
-**Move Evaluation**
-```json
-{
-  "type": "action",
-  "server": "chessCoach",
-  "action": "evaluateMove",
-  "parameters": {
-    "sessionId": "uuid",
-    "move": "e2e4",
-    "fenBefore": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-    "fenAfter": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
-    "evalCp": 34,
-    "depth": 15
-  }
-}
-```
-
-**Game Summary**
-```json
-{
-  "type": "action", 
-  "server": "chessCoach",
-  "action": "gameSummary",
-  "parameters": {
-    "sessionId": "uuid",
-    "result": "1-0",
-    "moves": ["e2e4", "e7e5", "..."],
-    "finalPosition": "...",
-    "gameLength": 25
-  }
-}
-```
-
-### Inbound Actions (From Coach)
-
-**Coaching Tips**
-```json
-{
-  "type": "adaptive_card",
-  "sessionId": "uuid",
-  "card": {
-    "title": "Opening Principle",
-    "body": "Control the center with your pawns!",
-    "priority": "high"
-  }
-}
+# Should return initialization response with server info
 ```
 
 ## 🛠️ Development
@@ -231,43 +387,150 @@ LOG_LEVEL=info
 ### Project Structure
 ```
 stockfishmcp/
-├── client/                 # Frontend Svelte app
-│   ├── src/
-│   │   ├── components/     # Svelte components
-│   │   ├── lib/           # Chess engine and utilities  
-│   │   └── stores/        # State management
-│   └── public/            # Static assets and WASM files
-├── server/                # Backend Node.js server
-├── src/lib/              # Shared utilities
-└── bin/                  # CLI executable
+├── bin/
+│   ├── chess-trainer-mcp      # Main CLI entry point (Web interface)
+│   ├── mcp                    # Clean MCP entry point  
+│   └── mcp-server.js          # MCP protocol implementation
+├── client/                    # Frontend Svelte app
+│   ├── src/components/        # Chess board, controls, etc.
+│   ├── public/               # Stockfish WASM files
+│   └── dist/                 # Built frontend
+├── server/
+│   ├── index.js              # Web server (ChessTrainerServer)
+│   ├── mcpServer.js          # MCP tools implementation
+│   └── mcpClient.js          # MCP client for outbound calls
+└── package.json              # Defines both bin commands
 ```
 
 ### Key Technologies
 - **Frontend**: Svelte, Vite, Chessground, Chessops
 - **Chess Engine**: Stockfish NNUE (WebAssembly)
 - **Backend**: Node.js, Express, WebSocket
-- **Protocol**: MCP (Model Context Protocol)
+- **Protocol**: MCP (Model Context Protocol) JSON-RPC 2.0
 
-### Contributing
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+### Development Commands
+```bash
+npm run dev          # Start development server with hot reload
+npm run build        # Build frontend for production
+npm run setup        # Install all dependencies and build
+npm start           # Start production server
+```
 
-## 📋 API Reference
+## 📋 MCP Tools Reference
 
-### REST Endpoints
-- `GET /api/health` - Health check
-- `GET /api/sessions/:id` - Get session details  
-- `POST /api/sessions` - Create new session
-- `POST /api/mcp/inbound` - Receive MCP messages
+### Analysis Tools
 
-### WebSocket Events
-- `game:move` - Player made a move
-- `game:analysis` - Request position analysis
-- `session:update` - Session state changed
-- `mcp:card` - Receive coaching card
+#### `analyze_position`
+Analyze a chess position using Stockfish engine.
+```json
+{
+  "name": "analyze_position",
+  "arguments": {
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+    "depth": 15
+  }
+}
+```
+
+#### `evaluate_move`
+Evaluate a chess move and get detailed analysis.
+```json
+{
+  "name": "evaluate_move", 
+  "arguments": {
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "move": "e2e4"
+  }
+}
+```
+
+#### `get_best_moves`
+Get the best moves for a given position.
+```json
+{
+  "name": "get_best_moves",
+  "arguments": {
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "count": 3
+  }
+}
+```
+
+#### `explain_opening`
+Explain a chess opening and its principles.
+```json
+{
+  "name": "explain_opening",
+  "arguments": {
+    "moves": ["e2e4", "e7e5", "Ng1f3"],
+    "opening_name": "King's Pawn Game"
+  }
+}
+```
+
+### Utility Tools
+
+#### `validate_fen`
+Validate a FEN string and provide position information.
+```json
+{
+  "name": "validate_fen",
+  "arguments": {
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+  }
+}
+```
+
+#### `generate_pgn`
+Generate PGN from a list of moves.
+```json
+{
+  "name": "generate_pgn",
+  "arguments": {
+    "moves": ["e2e4", "e7e5", "Ng1f3", "Nb8c6"],
+    "white_player": "Player1",
+    "black_player": "Player2"
+  }
+}
+```
+
+### UI Management Tools
+
+#### `start_chess_ui`
+Start the Chess Trainer web UI interface.
+```json
+{
+  "name": "start_chess_ui",
+  "arguments": {
+    "port": 3456,
+    "mode": "play"
+  }
+}
+```
+
+#### `stop_chess_ui`
+Stop the Chess Trainer web UI server.
+```json
+{
+  "name": "stop_chess_ui",
+  "arguments": {
+    "port": 3456
+  }
+}
+```
+
+#### `start_chess_game`
+Start a chess game and automatically open browser.
+```json
+{
+  "name": "start_chess_game",
+  "arguments": {
+    "port": 3456,
+    "mode": "play",
+    "auto_open": true
+  }
+}
+```
 
 ## 📄 License
 
@@ -275,10 +538,10 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🤝 Support
 
-- 📧 Issues: [GitHub Issues](https://github.com/yourusername/stockfishmcp/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/yourusername/stockfishmcp/discussions)
-- 📚 Documentation: [Wiki](https://github.com/yourusername/stockfishmcp/wiki)
+- 📧 Issues: [GitHub Issues](https://github.com/modenl/stockfishmcp/issues)
+- 💬 Discussions: [GitHub Discussions](https://github.com/modenl/stockfishmcp/discussions)
+- 📚 Documentation: This README contains all configuration information
 
 ---
 
-**Note**: This is an MCP server implementation. To use the full coaching features, you'll need an MCP-compatible host application that can process the chess training data and provide AI coaching responses. 
+**Ready to enhance your chess training with AI-powered analysis!** 🚀♟️ 
