@@ -20,7 +20,7 @@ A comprehensive chess training application with AI-powered analysis using Stockf
 - **Board Flipping**: View games from both perspectives
 
 ### 🤖 MCP Integration
-- **9 Chess Analysis Tools**: Complete set of MCP tools for AI assistants
+- **14 Chess Analysis & Game Tools**: Complete set of MCP tools for AI assistants
 - **Position Analysis**: Analyze any chess position with Stockfish
 - **Move Evaluation**: Get detailed move quality assessments
 - **Opening Explanations**: Learn chess opening principles
@@ -42,18 +42,29 @@ This will automatically:
 
 ### 🤖 MCP Integration for AI Assistants
 
-Chess Trainer MCP Server provides 9 powerful chess analysis tools that can be used by AI assistants like Claude, Cursor, and other MCP-compatible hosts.
+Chess Trainer MCP Server provides 14 powerful chess analysis and interactive game tools that can be used by AI assistants like Claude, Cursor, and other MCP-compatible hosts.
 
 #### Available Tools:
+
+**📊 Analysis Tools:**
 1. **`analyze_position`** - Analyze chess positions using Stockfish engine
 2. **`evaluate_move`** - Evaluate move quality and get detailed analysis
 3. **`get_best_moves`** - Get best move recommendations for any position
 4. **`explain_opening`** - Explain chess opening principles and theory
 5. **`validate_fen`** - Validate FEN strings and get position information
 6. **`generate_pgn`** - Generate PGN from move sequences
+
+**🎮 Game Management:**
 7. **`start_chess_ui`** - Start the Chess Trainer web interface
 8. **`stop_chess_ui`** - Stop the UI server
 9. **`start_chess_game`** - Start a chess game and automatically open browser
+
+**🎯 Interactive Game Control:**
+10. **`list_active_games`** - List all currently running chess games
+11. **`get_game_state`** - Get detailed state of any active game
+12. **`make_move`** - Make moves in active games via MCP
+13. **`suggest_move`** - Get AI move suggestions for active games
+14. **`reset_game`** - Reset any active game to starting position
 
 ## 🔧 MCP Host Configuration
 
@@ -224,6 +235,7 @@ chess-trainer-mcp-server                                  # If globally installe
 
 Once configured, you can ask your AI assistant to:
 
+**🔍 Analysis Commands:**
 ```
 "Analyze this chess position: rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
 
@@ -231,9 +243,36 @@ Once configured, you can ask your AI assistant to:
 
 "Explain the Italian Game opening"
 
+"Validate this FEN: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+```
+
+**🎮 Game Management:**
+```
 "Start a chess game for me"
 
-"Validate this FEN: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+"List all active chess games"
+
+"Show me the current state of game session_12345"
+```
+
+**🎯 Interactive Gameplay:**
+```
+"Make the move e2e4 in game session_12345"
+
+"What's the best move for the current position in my active game?"
+
+"Reset the chess game to starting position"
+
+"Make a move and then suggest the opponent's best response"
+```
+
+**💡 Advanced Interactions:**
+```
+"Start a game, make the moves 1.e4 e5 2.Nf3, then analyze the position"
+
+"Play the Italian Game opening and explain each move"
+
+"Set up a game where I can practice the Sicilian Defense"
 ```
 
 ### Web Interface Usage
@@ -270,7 +309,7 @@ Once configured, you can ask your AI assistant to:
 │  • Port 3456            │   │  • STDIO Communication     │
 │  • Web Interface        │   │  • JSON-RPC 2.0 Protocol   │
 │  • Game Management      │   │  • Tool Discovery           │
-│  • Contains MCP Client  │   │  • 9 Chess Analysis Tools  │
+│  • Contains MCP Client  │   │  • 14 Chess Analysis Tools │
 └─────────────────────────┘   └─────────────────────────────┘
               │                         │
               ▼                         ▼
@@ -528,6 +567,63 @@ Start a chess game and automatically open browser.
     "port": 3456,
     "mode": "play",
     "auto_open": true
+  }
+}
+```
+
+### Interactive Game Tools
+
+#### `list_active_games`
+List all currently active chess games.
+```json
+{
+  "name": "list_active_games",
+  "arguments": {}
+}
+```
+
+#### `get_game_state`
+Get the current state of a specific chess game.
+```json
+{
+  "name": "get_game_state",
+  "arguments": {
+    "game_id": "session_12345"
+  }
+}
+```
+
+#### `make_move`
+Make a move in an active chess game.
+```json
+{
+  "name": "make_move",
+  "arguments": {
+    "game_id": "session_12345",
+    "move": "e2e4"
+  }
+}
+```
+
+#### `suggest_move`
+Suggest the best move for current position in an active game.
+```json
+{
+  "name": "suggest_move",
+  "arguments": {
+    "game_id": "session_12345",
+    "depth": 12
+  }
+}
+```
+
+#### `reset_game`
+Reset an active chess game to starting position.
+```json
+{
+  "name": "reset_game",
+  "arguments": {
+    "game_id": "session_12345"
   }
 }
 ```

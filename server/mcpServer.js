@@ -5,6 +5,7 @@ import { parseSan, makeSan } from 'chessops/san.js';
 import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { gameStateManager } from './gameStateManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -203,6 +204,86 @@ export class MCPServer {
         required: []
       }
     });
+
+    // 新增：游戏交互工具
+    this.tools.set('list_active_games', {
+      name: 'list_active_games',
+      description: 'List all currently active chess games',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    });
+
+    this.tools.set('get_game_state', {
+      name: 'get_game_state',
+      description: 'Get the current state of a specific chess game',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          game_id: {
+            type: 'string',
+            description: 'ID of the game to get state for'
+          }
+        },
+        required: ['game_id']
+      }
+    });
+
+    this.tools.set('make_move', {
+      name: 'make_move',
+      description: 'Make a move in an active chess game',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          game_id: {
+            type: 'string',
+            description: 'ID of the game to make move in'
+          },
+          move: {
+            type: 'string',
+            description: 'Move in algebraic notation (e.g., "e2e4", "Nf3", "O-O")'
+          }
+        },
+        required: ['game_id', 'move']
+      }
+    });
+
+    this.tools.set('suggest_move', {
+      name: 'suggest_move',
+      description: 'Suggest the best move for current position in an active game',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          game_id: {
+            type: 'string',
+            description: 'ID of the game to suggest move for'
+          },
+          depth: {
+            type: 'number',
+            description: 'Analysis depth (default: 12)',
+            default: 12
+          }
+        },
+        required: ['game_id']
+      }
+    });
+
+    this.tools.set('reset_game', {
+      name: 'reset_game',
+      description: 'Reset an active chess game to starting position',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          game_id: {
+            type: 'string',
+            description: 'ID of the game to reset'
+          }
+        },
+        required: ['game_id']
+      }
+    });
   }
 
   // MCP Protocol Methods
@@ -237,6 +318,16 @@ export class MCPServer {
           return await this.stopChessUI(arguments_.port || 3456);
         case 'start_chess_game':
           return await this.startChessGame(arguments_.port || 3456, arguments_.mode || 'play', arguments_.auto_open !== false);
+        case 'list_active_games':
+          return await this.listActiveGames();
+        case 'get_game_state':
+          return await this.getGameState(arguments_.game_id);
+        case 'make_move':
+          return await this.makeMove(arguments_.game_id, arguments_.move);
+        case 'suggest_move':
+          return await this.suggestMove(arguments_.game_id, arguments_.depth || 12);
+        case 'reset_game':
+          return await this.resetGame(arguments_.game_id);
         default:
           throw new Error(`Tool ${name} not implemented`);
       }
@@ -639,12 +730,310 @@ ${pgn.trim()}`;
                 `   • Stockfish engine analysis\n` +
                 `   • Move evaluation and hints\n` +
                 `   • Game replay and analysis\n\n` +
+                `💡 To interact with the game via MCP, use:\n` +
+                `   • list_active_games - See all active games\n` +
+                `   • make_move - Make moves in the game\n` +
+                `   • suggest_move - Get AI move suggestions\n\n` +
                 `💡 To stop the server: kill ${serverProcess.pid}`
         }]
       };
 
     } catch (error) {
       throw new Error(`Failed to start chess game: ${error.message}`);
+    }
+  }
+
+  // 新增：游戏交互方法
+  async listActiveGames() {
+    try {
+      const activeGames = gameStateManager.getAllActiveGames();
+      
+      if (activeGames.length === 0) {
+        return {
+          content: [{
+            type: 'text',
+            text: `📋 No Active Chess Games\n\n` +
+                  `🎯 No chess games are currently running.\n` +
+                  `💡 Start a new game with: start_chess_game`
+          }]
+        };
+      }
+
+      const gamesList = activeGames.map(game => {
+        const moveCount = game.moves ? game.moves.length : 0;
+        const lastMove = game.moves && game.moves.length > 0 ? game.moves[game.moves.length - 1] : null;
+        
+        return `🎮 Game ID: ${game.gameId}\n` +
+               `   📅 Started: ${new Date(game.startTime).toLocaleString()}\n` +
+               `   🎯 Mode: ${game.mode || 'play'}\n` +
+               `   ♟️  Moves: ${moveCount}\n` +
+               `   🎲 Current turn: ${game.turn || 'white'}\n` +
+               `   ${lastMove ? `🏃 Last move: ${lastMove.san || lastMove.move}` : '🆕 No moves yet'}\n` +
+               `   📍 Position: ${game.fen ? game.fen.substring(0, 20) + '...' : 'starting position'}`;
+      }).join('\n\n');
+
+      return {
+        content: [{
+          type: 'text',
+          text: `📋 Active Chess Games (${activeGames.length})\n\n${gamesList}\n\n` +
+                `💡 Use get_game_state <game_id> for detailed information\n` +
+                `💡 Use make_move <game_id> <move> to make a move`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to list active games: ${error.message}`);
+    }
+  }
+
+  async getGameState(gameId) {
+    try {
+      const gameState = gameStateManager.getGameState(gameId);
+      
+      if (!gameState) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Game Not Found\n\n` +
+                  `🎯 Game ID "${gameId}" does not exist or is no longer active.\n` +
+                  `💡 Use list_active_games to see available games.`
+          }]
+        };
+      }
+
+      const moveHistory = gameState.moves ? gameState.moves.map((move, index) => {
+        const moveNumber = Math.floor(index / 2) + 1;
+        const isWhite = index % 2 === 0;
+        return `${isWhite ? moveNumber + '.' : ''}${move.san || move.move}`;
+      }).join(' ') : 'No moves yet';
+
+      return {
+        content: [{
+          type: 'text',
+          text: `🎮 Game State: ${gameId}\n\n` +
+                `📅 Started: ${new Date(gameState.startTime).toLocaleString()}\n` +
+                `🎯 Mode: ${gameState.mode || 'play'}\n` +
+                `🎲 Current turn: ${gameState.turn || 'white'}\n` +
+                `♟️  Move count: ${gameState.moves ? gameState.moves.length : 0}\n` +
+                `📍 Current FEN: ${gameState.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'}\n` +
+                `📊 Status: ${gameState.active ? '🟢 Active' : '🔴 Ended'}\n\n` +
+                `📝 Move History:\n${moveHistory}\n\n` +
+                `💡 Use make_move ${gameId} <move> to make a move\n` +
+                `💡 Use suggest_move ${gameId} for AI suggestions`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to get game state: ${error.message}`);
+    }
+  }
+
+  async makeMove(gameId, move) {
+    try {
+      const gameState = gameStateManager.getGameState(gameId);
+      
+      if (!gameState) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Game Not Found\n\n` +
+                  `🎯 Game ID "${gameId}" does not exist.\n` +
+                  `💡 Use list_active_games to see available games.`
+          }]
+        };
+      }
+
+      if (!gameState.active) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Game Ended\n\n` +
+                  `🎯 Game "${gameId}" has already ended.\n` +
+                  `💡 Start a new game with start_chess_game.`
+          }]
+        };
+      }
+
+      // 验证走法
+      const currentFen = gameState.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+      const setup = parseFen(currentFen);
+      if (setup.isErr) {
+        throw new Error(`Invalid position in game: ${currentFen}`);
+      }
+      
+      const pos = Chess.fromSetup(setup.value);
+      if (pos.isErr) {
+        throw new Error(`Invalid chess position: ${currentFen}`);
+      }
+      
+      const chess = pos.value;
+      
+      // 尝试解析走法
+      let moveObj;
+      try {
+        moveObj = parseSan(chess, move);
+        if (moveObj.isErr) {
+          // 尝试 UCI 格式
+          moveObj = parseUci(move);
+          if (moveObj.isErr) {
+            throw new Error(`Invalid move: ${move}`);
+          }
+        }
+      } catch {
+        throw new Error(`Invalid move format: ${move}`);
+      }
+
+      // 检查走法是否合法
+      const legalMoves = Array.from(chess.legalMoves());
+      const isLegal = legalMoves.some(legalMove => 
+        makeUci(legalMove) === makeUci(moveObj.value || moveObj)
+      );
+
+      if (!isLegal) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Illegal Move\n\n` +
+                  `🎯 Move "${move}" is not legal in the current position.\n` +
+                  `📍 Current position: ${currentFen}\n` +
+                  `💡 Use suggest_move ${gameId} to see legal moves.`
+          }]
+        };
+      }
+
+      // 执行走法
+      const newChess = chess.play(moveObj.value || moveObj);
+      const newFen = makeFen(newChess.toSetup());
+      const sanMove = makeSan(chess, moveObj.value || moveObj);
+
+      // 通过命令队列发送走法到 Web 服务器
+      const commandId = gameStateManager.addMCPCommand({
+        type: 'make_move',
+        gameId: gameId,
+        move: move,
+        sanMove: sanMove,
+        newFen: newFen
+      });
+
+      // 等待命令处理（简单的轮询，实际中可以用更好的方式）
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 200));
+        const commands = gameStateManager.loadCommands();
+        const command = commands.find(cmd => cmd.id === commandId);
+        
+        if (command && command.processed) {
+          if (command.error) {
+            throw new Error(command.error);
+          }
+          
+          return {
+            content: [{
+              type: 'text',
+              text: `✅ Move Made Successfully!\n\n` +
+                    `🎮 Game: ${gameId}\n` +
+                    `♟️  Move: ${sanMove}\n` +
+                    `📍 New position: ${newFen}\n` +
+                    `🎲 Next turn: ${newChess.turn === 'white' ? 'White' : 'Black'}\n\n` +
+                    `${newChess.isEnd() ? 
+                      `🏁 Game Over! ${newChess.isCheckmate() ? 'Checkmate!' : 'Draw!'}` : 
+                      `💡 Use suggest_move ${gameId} for next move suggestions`}`
+            }]
+          };
+        }
+        
+        attempts++;
+      }
+
+      // 如果命令没有被处理，返回一个临时响应
+      return {
+        content: [{
+          type: 'text',
+          text: `⏳ Move Queued\n\n` +
+                `🎮 Game: ${gameId}\n` +
+                `♟️  Move: ${sanMove} has been queued\n` +
+                `⚠️  Waiting for web interface to process the move...\n\n` +
+                `💡 Check game state with: get_game_state ${gameId}`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to make move: ${error.message}`);
+    }
+  }
+
+  async suggestMove(gameId, depth = 12) {
+    try {
+      const gameState = gameStateManager.getGameState(gameId);
+      
+      if (!gameState) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Game Not Found\n\n` +
+                  `🎯 Game ID "${gameId}" does not exist.\n` +
+                  `💡 Use list_active_games to see available games.`
+          }]
+        };
+      }
+
+      const currentFen = gameState.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+      
+      // 使用现有的位置分析方法
+      const analysis = await this.analyzePosition(currentFen, depth);
+      
+      return {
+        content: [{
+          type: 'text',
+          text: `🤖 Move Suggestion for Game ${gameId}\n\n` +
+                `📍 Current position: ${currentFen}\n` +
+                `🎲 Turn: ${gameState.turn || 'white'}\n\n` +
+                `${analysis.content[0].text}\n\n` +
+                `💡 To make the suggested move: make_move ${gameId} <move>`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to suggest move: ${error.message}`);
+    }
+  }
+
+  async resetGame(gameId) {
+    try {
+      const gameState = gameStateManager.getGameState(gameId);
+      
+      if (!gameState) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Game Not Found\n\n` +
+                  `🎯 Game ID "${gameId}" does not exist.\n` +
+                  `💡 Use list_active_games to see available games.`
+          }]
+        };
+      }
+
+      // 通过命令队列发送重置命令到 Web 服务器
+      const commandId = gameStateManager.addMCPCommand({
+        type: 'reset_game',
+        gameId: gameId
+      });
+
+      return {
+        content: [{
+          type: 'text',
+          text: `🔄 Game Reset Requested\n\n` +
+                `🎮 Game: ${gameId}\n` +
+                `📍 Position will be reset to starting position\n` +
+                `⏳ Reset command has been sent to the web interface...\n\n` +
+                `💡 Check game state with: get_game_state ${gameId}`
+        }]
+      };
+
+    } catch (error) {
+      throw new Error(`Failed to reset game: ${error.message}`);
     }
   }
 
