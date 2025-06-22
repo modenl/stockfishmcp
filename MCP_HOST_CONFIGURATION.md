@@ -4,20 +4,36 @@
 
 ## 🎯 快速配置（推荐）
 
-### 使用专用 MCP 入口点
+### 方式一：使用专用 MCP 入口点
 ```json
 {
   "mcpServers": {
     "chess-trainer-mcp": {
       "transportType": "stdio",
       "command": "npx",
-      "args": ["chess-trainer-mcp-server"]
+      "args": ["--package=chess-trainer-mcp", "chess-trainer-mcp-server"]
     }
   }
 }
 ```
 
-这是最简单且协议合规的配置方式。
+### 方式二：预安装后使用（更快）
+```bash
+# 先全局安装
+npm install -g chess-trainer-mcp
+
+# 然后配置
+{
+  "mcpServers": {
+    "chess-trainer-mcp": {
+      "transportType": "stdio",
+      "command": "chess-trainer-mcp-server"
+    }
+  }
+}
+```
+
+这两种方式都能确保协议合规。
 
 ## 🔧 各种主机配置方法
 
@@ -31,7 +47,7 @@
   "mcpServers": {
     "chess-trainer-mcp": {
       "command": "npx",
-      "args": ["chess-trainer-mcp-server"]
+      "args": ["--package=chess-trainer-mcp", "chess-trainer-mcp-server"]
     }
   }
 }
@@ -46,7 +62,7 @@
     "chess-trainer-mcp": {
       "transportType": "stdio",
       "command": "npx", 
-      "args": ["chess-trainer-mcp-server"]
+      "args": ["--package=chess-trainer-mcp", "chess-trainer-mcp-server"]
     }
   }
 }
