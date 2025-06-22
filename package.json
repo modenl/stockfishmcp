@@ -73,9 +73,6 @@
     "client/vite.config.js",
     "bin/",
     "README.md",
-    "DEPLOYMENT.md",
-    "CURSOR_MCP_SETUP.md",
-    "MCP_HOST_CONFIGURATION.md",
     "LICENSE"
   ]
 }
