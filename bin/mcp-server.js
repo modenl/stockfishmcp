@@ -14,6 +14,33 @@ class StdioMCPServer {
     
     this.requestId = 0;
     this.setupHandlers();
+    
+    // 禁用所有非 JSON 输出
+    this.silenceNonJsonOutput();
+  }
+
+  silenceNonJsonOutput() {
+    // 重定向 console.log 到 stderr，避免污染 MCP 协议
+    const originalConsoleLog = console.log;
+    const originalConsoleError = console.error;
+    const originalConsoleWarn = console.warn;
+    
+    console.log = (...args) => {
+      // MCP 协议输出通过 this.sendResponse 发送，其他输出重定向到 stderr
+      if (args.length === 1 && typeof args[0] === 'string' && args[0].startsWith('{"jsonrpc"')) {
+        originalConsoleLog(...args);
+      } else {
+        process.stderr.write('[MCP] ' + args.join(' ') + '\n');
+      }
+    };
+    
+    console.error = (...args) => {
+      process.stderr.write('[MCP ERROR] ' + args.join(' ') + '\n');
+    };
+    
+    console.warn = (...args) => {
+      process.stderr.write('[MCP WARN] ' + args.join(' ') + '\n');
+    };
   }
 
   setupHandlers() {
