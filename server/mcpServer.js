@@ -597,7 +597,7 @@ ${pgn.trim()}`;
 
   async startChessGame(port = 3456, mode = 'play', autoOpen = true) {
     try {
-      // 获取项目根目录
+      // 简化逻辑，直接使用指定端口启动
       const projectRoot = path.join(__dirname, '..');
       
       // 启动服务器进程
@@ -616,14 +616,13 @@ ${pgn.trim()}`;
       // 如果需要自动打开浏览器
       if (autoOpen) {
         // 等待服务器启动
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // 在 macOS 上使用 open 命令打开浏览器
-        const openProcess = spawn('open', [url], {
-          stdio: 'ignore',
-          detached: true
-        });
-        openProcess.unref();
+        setTimeout(() => {
+          const openProcess = spawn('open', [url], {
+            stdio: 'ignore',
+            detached: true
+          });
+          openProcess.unref();
+        }, 2000);
       }
 
       return {
@@ -633,7 +632,7 @@ ${pgn.trim()}`;
                 `🌐 URL: ${url}\n` +
                 `🎯 Mode: ${mode}\n` +
                 `🚀 Server PID: ${serverProcess.pid}\n` +
-                `${autoOpen ? '🌍 Browser opened automatically!\n' : '📱 Open the URL manually in your browser\n'}\n` +
+                `${autoOpen ? '🌍 Browser will open automatically!\n' : '📱 Open the URL manually in your browser\n'}\n` +
                 `♟️  Ready to play chess!\n` +
                 `🎮 Features available:\n` +
                 `   • Interactive chess board\n` +
@@ -648,6 +647,8 @@ ${pgn.trim()}`;
       throw new Error(`Failed to start chess game: ${error.message}`);
     }
   }
+
+
 
   // Helper Methods
   async getStockfishAnalysis(fen, depth) {
