@@ -308,8 +308,12 @@ class ChessTrainerServer {
   }
 }
 
-// Start server if run directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Check if running as MCP server (stdio mode) 
+if (process.argv.includes('--mcp') || process.env.MCP_STDIO_MODE === 'true') {
+  // Import and start MCP server
+  import('../bin/mcp-server.js');
+} else if (import.meta.url === `file://${process.argv[1]}`) {
+  // Start regular HTTP server
   const port = process.env.PORT || 3456;
   const server = new ChessTrainerServer();
   server.start(port);
