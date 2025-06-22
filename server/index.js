@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { SessionManager } from './sessionManager.js';
 import { MCPClient } from './mcpClient.js';
 import { validateMessage } from './validation.js';
+import { gameStateManager } from './gameStateManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +21,7 @@ class ChessTrainerServer {
     this.sessionManager = new SessionManager();
     this.mcpClient = new MCPClient();
     this.clients = new Map(); // sessionId -> ws connection
+    this.gameStates = new Map(); // gameId -> game state
     
     // Increase max listeners to prevent warning
     this.server.setMaxListeners(20);
@@ -27,6 +29,7 @@ class ChessTrainerServer {
     this.setupMiddleware();
     this.setupRoutes();
     this.setupWebSocket();
+    this.setupMCPCommandProcessor();
   }
 
   setupMiddleware() {
@@ -133,6 +136,21 @@ class ChessTrainerServer {
       case 'join_session':
         this.clients.set(sessionId, ws);
         const session = this.sessionManager.getSession(sessionId);
+        
+        // 如果会话不存在，创建新的游戏状态
+        if (!session) {
+          const newGameState = {
+            gameId: sessionId,
+            active: true,
+            startTime: new Date().toISOString(),
+            mode: 'play',
+            moves: [],
+            fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+            turn: 'white'
+          };
+          gameStateManager.saveGameState(sessionId, newGameState);
+        }
+        
         ws.send(JSON.stringify({
           type: 'session_state',
           session: session || null
@@ -174,6 +192,32 @@ class ChessTrainerServer {
     });
 
     if (moveRecord) {
+      // 同步到游戏状态管理器
+      const gameState = gameStateManager.getGameState(sessionId) || {
+        gameId: sessionId,
+        active: true,
+        startTime: new Date().toISOString(),
+        mode: 'play',
+        moves: [],
+        fen: fenBefore,
+        turn: fenBefore.includes(' w ') ? 'white' : 'black'
+      };
+
+      gameState.moves.push({
+        san: move.san,
+        uci: move.uci,
+        ply: moveRecord.ply,
+        timestamp: new Date().toISOString(),
+        evalCp,
+        depth,
+        timeMs
+      });
+      gameState.fen = fenAfter;
+      gameState.turn = fenAfter.includes(' w ') ? 'white' : 'black';
+      gameState.lastUpdated = new Date().toISOString();
+
+      gameStateManager.saveGameState(sessionId, gameState);
+
       // Broadcast move to all clients in session
       const updateMessage = JSON.stringify({
         type: 'move_update',
@@ -233,6 +277,136 @@ class ChessTrainerServer {
     }
   }
 
+  setupMCPCommandProcessor() {
+    // 定期检查并处理 MCP 命令
+    this.mcpCommandInterval = setInterval(() => {
+      this.processMCPCommands();
+    }, 1000); // 每秒检查一次
+  }
+
+  async processMCPCommands() {
+    try {
+      const commands = gameStateManager.getUnprocessedCommands();
+      
+      for (const command of commands) {
+        try {
+          await this.executeMCPCommand(command);
+          gameStateManager.markCommandProcessed(command.id, { success: true });
+        } catch (error) {
+          console.error(`Failed to execute MCP command ${command.id}:`, error);
+          gameStateManager.markCommandProcessed(command.id, null, error.message);
+        }
+      }
+      
+      // 清理旧命令
+      gameStateManager.clearOldCommands(30);
+    } catch (error) {
+      console.error('Error processing MCP commands:', error);
+    }
+  }
+
+  async executeMCPCommand(command) {
+    const { type, gameId } = command;
+    
+    switch (type) {
+      case 'make_move':
+        await this.handleMCPMakeMove(command);
+        break;
+      case 'reset_game':
+        await this.handleMCPResetGame(command);
+        break;
+      default:
+        throw new Error(`Unknown MCP command type: ${type}`);
+    }
+  }
+
+  async handleMCPMakeMove(command) {
+    const { gameId, move, sanMove, newFen } = command;
+    
+    // 更新游戏状态
+    let gameState = gameStateManager.getGameState(gameId);
+    if (!gameState) {
+      // 创建新游戏状态
+      gameState = {
+        gameId,
+        active: true,
+        startTime: new Date().toISOString(),
+        mode: 'play',
+        moves: [],
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        turn: 'white'
+      };
+    }
+
+    // 添加走法到历史记录
+    const moveRecord = {
+      san: sanMove,
+      uci: move,
+      ply: gameState.moves.length + 1,
+      timestamp: new Date().toISOString()
+    };
+
+    gameState.moves.push(moveRecord);
+    gameState.fen = newFen;
+    gameState.turn = newFen.includes(' w ') ? 'white' : 'black';
+    gameState.lastUpdated = new Date().toISOString();
+
+    // 保存游戏状态
+    gameStateManager.saveGameState(gameId, gameState);
+
+    // 通知所有连接的客户端
+    const updateMessage = JSON.stringify({
+      type: 'mcp_move_update',
+      gameId,
+      move: moveRecord,
+      fen: newFen,
+      turn: gameState.turn
+    });
+
+    // 广播给所有客户端（实际中可以根据 gameId 过滤）
+    this.wss.clients.forEach(client => {
+      if (client.readyState === 1) { // WebSocket.OPEN
+        client.send(updateMessage);
+      }
+    });
+
+    console.log(`MCP Move executed: ${sanMove} in game ${gameId}`);
+  }
+
+  async handleMCPResetGame(command) {
+    const { gameId } = command;
+    
+    // 重置游戏状态
+    const gameState = {
+      gameId,
+      active: true,
+      startTime: new Date().toISOString(),
+      mode: 'play',
+      moves: [],
+      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      turn: 'white',
+      lastUpdated: new Date().toISOString()
+    };
+
+    gameStateManager.saveGameState(gameId, gameState);
+
+    // 通知所有连接的客户端
+    const resetMessage = JSON.stringify({
+      type: 'mcp_game_reset',
+      gameId,
+      fen: gameState.fen,
+      turn: gameState.turn
+    });
+
+    this.wss.clients.forEach(client => {
+      if (client.readyState === 1) {
+        client.send(resetMessage);
+      }
+    });
+
+    console.log(`MCP Game reset: ${gameId}`);
+  }
+
   async handleInboundMCP(message) {
     const { type, sessionId } = message;
     const client = this.clients.get(sessionId);
@@ -278,6 +452,12 @@ class ChessTrainerServer {
   shutdown() {
     console.log('Shutting down Chess Trainer MCP Server...');
     
+    // Clear MCP command processor interval
+    if (this.mcpCommandInterval) {
+      clearInterval(this.mcpCommandInterval);
+      this.mcpCommandInterval = null;
+    }
+    
     // Close all WebSocket connections
     this.wss.clients.forEach(ws => {
       if (ws.readyState === ws.OPEN) {
@@ -296,6 +476,10 @@ class ChessTrainerServer {
     
     // Clear client mappings
     this.clients.clear();
+    this.gameStates.clear();
+    
+    // Clean up game state manager
+    gameStateManager.cleanup();
     
     // Close HTTP server
     this.server.close((err) => {
