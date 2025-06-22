@@ -27,31 +27,69 @@ A comprehensive chess training application with AI-powered analysis using Stockf
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- Node.js 18+
-- npm or yarn
-
-### Installation
+### 🎯 One-Command Setup (Recommended)
 
 ```bash
+# Run directly with npx - no installation needed!
+npx chess-trainer-mcp
+```
+
+This will automatically:
+- Install all dependencies
+- Build the frontend
+- Start the server on http://localhost:3456
+
+### 📦 Alternative Installation Methods
+
+#### Method 1: NPX with Setup
+```bash
+# First-time setup
+npx chess-trainer-mcp setup
+
+# Then start the server
+npx chess-trainer-mcp start
+```
+
+#### Method 2: Global Installation
+```bash
+# Install globally
+npm install -g chess-trainer-mcp
+
+# Run from anywhere
+chess-trainer-mcp
+```
+
+#### Method 3: Clone and Build
+```bash
 # Clone the repository
-git clone https://github.com/yourusername/stockfishmcp.git
+git clone https://github.com/modenl/stockfishmcp.git
 cd stockfishmcp
 
-# Install dependencies
-npm install
-
-# Install client dependencies
-npm run client:install
-
-# Build the frontend
-npm run build
+# Install and build
+npm run setup
 
 # Start the server
 npm start
 ```
 
-The application will be available at `http://localhost:3456`
+### 🛠️ Command Options
+
+```bash
+# Basic usage
+npx chess-trainer-mcp                    # Start on default port 3456
+npx chess-trainer-mcp --port 8080       # Start on custom port
+npx chess-trainer-mcp --no-mcp          # Disable MCP integration
+
+# Development
+npx chess-trainer-mcp dev               # Development mode with hot reload
+npx chess-trainer-mcp build             # Build frontend only
+npx chess-trainer-mcp setup             # Install dependencies and build
+
+# Help
+npx chess-trainer-mcp help              # Show all available options
+```
+
+The application will be available at `http://localhost:3456` (or your specified port)
 
 ### Development Mode
 
