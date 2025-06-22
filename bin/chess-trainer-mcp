@@ -14,6 +14,38 @@ const rootDir = path.join(__dirname, '..');
 const args = process.argv.slice(2);
 const command = args[0] || 'start';
 
+// Global shutdown flag to prevent multiple shutdown handlers
+let isShuttingDown = false;
+let server = null;
+
+// Graceful shutdown function
+function gracefulShutdown(signal) {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+  
+  console.log(`\n👋 Shutting down Chess Trainer MCP Server... (${signal})`);
+  
+  if (server && typeof server.shutdown === 'function') {
+    server.shutdown();
+    
+    // Give server time to close gracefully, then force exit
+    setTimeout(() => {
+      console.log('✅ Server shutdown complete');
+      process.exit(0);
+    }, 2000);
+    
+    // Force exit after timeout
+    setTimeout(() => {
+      console.log('⏰ Force closing server after timeout');
+      process.exit(1);
+    }, 5000);
+  } else {
+    process.exit(0);
+  }
+}
+
 // Print banner
 function printBanner() {
   console.log(`
@@ -209,42 +241,19 @@ async function startServer(config) {
   console.log(`📱 Open your browser to: http://localhost:${config.port}`);
   console.log('');
 
-  // Handle process termination gracefully
-  let server;
-
-  process.on('SIGINT', () => {
-    console.log('\n👋 Shutting down Chess Trainer MCP Server...');
-    if (server) {
-      server.server.close(() => {
-        console.log('✅ Server closed gracefully');
-        process.exit(0);
-      });
-    } else {
-      process.exit(0);
-    }
-  });
-
-  process.on('SIGTERM', () => {
-    console.log('\n📴 Received SIGTERM, shutting down...');
-    if (server) {
-      server.server.close(() => {
-        console.log('✅ Server closed gracefully');
-        process.exit(0);
-      });
-    } else {
-      process.exit(0);
-    }
-  });
+  // Handle process termination - setup handlers before starting server
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
   // Handle uncaught exceptions
   process.on('uncaughtException', (error) => {
     console.error('💥 Uncaught Exception:', error);
-    process.exit(1);
+    gracefulShutdown('uncaughtException');
   });
 
   process.on('unhandledRejection', (reason, promise) => {
     console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
-    process.exit(1);
+    gracefulShutdown('unhandledRejection');
   });
 
   // Start the server
