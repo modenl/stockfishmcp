@@ -1,1 +1,19 @@
-[]
+[
+  {
+    "id": "cmd_1750628859854_9h9oqj5fu",
+    "timestamp": "2025-06-22T21:47:39.854Z",
+    "processed": false,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "Nf3",
+    "sanMove": "Nf3",
+    "newFen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2"
+  },
+  {
+    "id": "cmd_1750628872307_33uxs684h",
+    "timestamp": "2025-06-22T21:47:52.307Z",
+    "processed": false,
+    "type": "reset_game",
+    "gameId": "test_game_123"
+  }
+]
