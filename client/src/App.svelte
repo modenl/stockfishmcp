@@ -8,7 +8,6 @@
   import GameReplay from './components/GameReplay.svelte';
   import { webSocketStore } from './stores/websocket.js';
   import stockfish, { engineReady, engineStatus } from './lib/stockfish.js';
-  import { sessionStore } from './stores/session.js';
   import { Chess } from 'chessops/chess';
   import { makeFen, parseFen } from 'chessops/fen';
   import { makeUci, parseUci } from 'chessops/util';
@@ -62,198 +61,371 @@
   let replayGameData = null;
 
   let unsubscribeWS;
-  let unsubscribeSession;
+
+  let sessionId = 'test_game_123'; // Default, update if your app uses a different session mechanism
 
   onMount(() => {
     // stockfish service initializes itself automatically.
     unsubscribeWS = webSocketStore.subscribe(({ lastMessage }) => {
       if (lastMessage) handleWebSocketMessage(lastMessage);
     });
-    unsubscribeSession = sessionStore.subscribe(s => {}); // Keep session logic if needed
     
     // Connect to WebSocket server
     const wsUrl = `ws://${window.location.hostname}:3456`;
     console.log('🔌 Connecting to WebSocket:', wsUrl);
     webSocketStore.connect(wsUrl);
     
-    // Test engine when ready
-    setTimeout(async () => {
-      console.log('🧪 Engine status check...');
-      console.log('Engine ready store value:', $engineReady);
-      console.log('Engine status store value:', $engineStatus);
+    // Join the session once connected
+    setTimeout(() => {
+      console.log('🔗 Joining WebSocket session: test_game_123');
+      webSocketStore.sendMessage({
+        type: 'join_session',
+        sessionId: 'test_game_123'
+      });
       
-      if ($engineReady) {
-        try {
-          await stockfish.testEngine();
-        } catch (error) {
-          console.error('🧪 Engine test failed:', error);
-        }
-      }
-    }, 3000);
+      // Load current game state from server
+      loadGameStateFromServer();
+    }, 1000); // Wait 1 second for connection to establish
+    
+    // Optionally you can run a self-test, but doing so can interfere with live searches.
+    // If you really need to test the engine start-up, run it once after the initial page load—
+    // but never while a game is in progress. For now, we disable it to avoid overlapping
+    // search requests that cancel each other.
   });
 
   onDestroy(() => {
     if (unsubscribeWS) unsubscribeWS();
-    if (unsubscribeSession) unsubscribeSession();
     stockfish.destroy();
   });
 
   function handleWebSocketMessage(message) {
-    // Handle websocket messages if you have a server component
+    console.log('WebSocket message received in App.svelte:', message);
+    // Only process messages that are objects and have a type
+    if (!message || typeof message !== 'object' || !message.type) return;
+
+    switch (message.type) {
+      case 'mcp_move':
+        // Only handle moves for the current session/game
+        if (message.sessionId === 'test_game_123') {
+          handleServerMove(message);
+        }
+        break;
+      case 'mcp_game_reset':
+        // Handle game reset from server
+        if (message.gameId === 'test_game_123') {
+          handleServerReset(message);
+        }
+        break;
+      // You can add more cases for other message types if needed
+      default:
+        console.log('🤷 Unhandled WebSocket message type:', message.type);
+        break;
+    }
   }
 
-  function handleMove(move, isAIMove = false) {
+  function handleServerReset(resetData) {
+    console.log('🔄 Received game reset from server:', resetData);
+    
+    // Reset the game engine to starting position
+    game = Chess.default();
+    
+    // Reset game state
+    gameState.fen = resetData.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    gameState.turn = resetData.turn || 'white';
+    gameState.moves = [];
+    gameState.currentMoveIndex = -1;
+    gameState.status = 'playing';
+    gameState.inCheck = false;
+    gameState.winner = null;
+    gameState.aiThinking = false;
+    
+    updateGameState();
+    
+    console.log('✅ Game reset applied locally');
+    
+    // Check if AI should move first (if player chose black)
+    if (
+      gameState.mode === 'human_vs_ai' &&
+      gameState.status === 'playing' &&
+      gameState.turn !== gameState.playerColor &&
+      !gameState.aiThinking
+    ) {
+      console.log('🤖 AI should move first after reset, scheduling AI move...');
+      setTimeout(() => makeAIMove(), 500);
+    }
+  }
+
+  function handleServerMove(moveData) {
+    console.log('📡 Received move from server:', moveData);
+    if (!game) return;
     try {
-      const newGame = game.clone();
-      newGame.play(move);
-      
-      game = newGame;
-      gameState.fen = makeFen(game.toSetup());
-      gameState.turn = game.turn === 'white' ? 'white' : 'black';
-      gameState.moves = [...gameState.moves, move];
-      gameState.currentMoveIndex++;
-
-      // Check for game ending conditions
-      checkGameStatus();
-
-      // Check if it's AI's turn to move (but not if this was already an AI move)
-      // Also don't trigger AI if we're in replay mode
-      if (!isAIMove && !showReplayMode && gameState.mode === 'human_vs_ai' && gameState.turn !== gameState.playerColor && gameState.status === 'playing') {
-        console.log('🤖 AI turn detected, making AI move...');
-        setTimeout(() => makeAIMove(), 100); // Small delay for UI update
+      const uciMove = parseUci(moveData.uci);
+      if (game.isLegal(uciMove)) {
+        // Apply the move to local game state
+        game.play(uciMove);
+        updateGameState();
+        
+        console.log('✅ Move applied from server broadcast');
+        
+        // Check if it's AI's turn after this move
+        if (
+          gameState.mode === 'human_vs_ai' &&
+          gameState.status === 'playing' &&
+          gameState.turn !== gameState.playerColor &&
+          !gameState.aiThinking
+        ) {
+          console.log('🤖 AI turn detected after server move, scheduling AI move...');
+          setTimeout(() => makeAIMove(), 300);
+        }
       }
     } catch (e) {
-      console.error("Invalid move:", move, e);
-      return;
+      console.error('Error processing remote move:', e);
     }
+  }
+
+  async function loadGameStateFromServer() {
+    try {
+      console.log('🔄 Loading game state from server...');
+      const response = await fetch('/api/mcp/get_game_state', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ game_id: 'test_game_123' })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('📊 Server game state loaded:', result);
+        
+        // Parse the game state from server response
+        // The server returns a text message, we need to extract the FEN and moves
+        if (result.message && result.message.includes('Current FEN:')) {
+          const fenMatch = result.message.match(/Current FEN: ([^\n]+)/);
+          const movesMatch = result.message.match(/Move History:\n([^\n]+)/);
+          
+          if (fenMatch) {
+            const serverFen = fenMatch[1].trim();
+            console.log('🎯 Server FEN:', serverFen);
+            
+            // Load this position into the client
+            try {
+              const setup = parseFen(serverFen).unwrap();
+              game = Chess.fromSetup(setup).unwrap();
+              
+              // Update all game state properly
+              gameState.fen = serverFen;
+              gameState.turn = game.turn; // Use game engine's turn, not FEN parsing
+              
+              // Parse move history if available
+              if (movesMatch) {
+                const moveHistory = movesMatch[1].trim();
+                console.log('📝 Server move history:', moveHistory);
+                // TODO: Parse and apply move history to gameState.moves
+              }
+              
+              // Ensure UI is updated with the loaded state
+              updateGameState();
+              
+              console.log('✅ Game state synchronized with server');
+              
+            } catch (e) {
+              console.error('❌ Failed to parse server FEN:', e);
+            }
+          }
+        }
+      } else {
+        console.error('❌ Failed to load game state from server');
+      }
+    } catch (error) {
+      console.error('❌ Error loading game state from server:', error);
+    }
+  }
+
+  async function syncMoveToServer(move, oldFen, newFen) {
+    try {
+      console.log('💾 Syncing move to server:', { move: move.san, uci: makeUci(move) });
+      
+      const response = await fetch('/api/mcp/make_move', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          game_id: 'test_game_123', 
+          move: makeUci(move)
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Move synced to server successfully');
+      } else {
+        console.error('❌ Failed to sync move to server');
+      }
+    } catch (error) {
+      console.error('❌ Error syncing move to server:', error);
+    }
+  }
+
+  async function syncNewGameToServer() {
+    try {
+      console.log('🎮 Syncing new game to server...');
+      
+      const response = await fetch('/api/mcp/reset_game', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ game_id: 'test_game_123' })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ New game synced to server successfully');
+      } else {
+        console.error('❌ Failed to sync new game to server');
+      }
+    } catch (error) {
+      console.error('❌ Error syncing new game to server:', error);
+    }
+  }
+
+  async function handleMove(move) {
+    console.log('🎯 Processing move:', move);
+    if (!game) return;
+
+    const oldFen = gameState.fen;
+    
+    // Calculate what the new FEN would be after this move
+    const tempGame = game.clone();
+    tempGame.play(move);
+    const newFen = makeFen(tempGame.toSetup());
+    
+    // Always sync to server first, don't apply locally yet
+    // The server will broadcast back and we'll apply it then
+    await syncMoveToServer(move, oldFen, newFen);
   }
   
   function checkGameStatus() {
-    const isInCheck = game.isCheck();
-    const isCheckmate = game.isCheckmate();
-    const isStalemate = game.isStalemate();
-    const isDraw = game.isInsufficientMaterial() || game.isStalemate();
-    
-    console.log('🔍 Game status check:', {
-      inCheck: isInCheck,
-      checkmate: isCheckmate,
-      stalemate: isStalemate,
-      draw: isDraw,
-      turn: gameState.turn
-    });
+    if (!game) return;
 
-    if (isCheckmate) {
+    if (game.isCheckmate()) {
       gameState.status = 'checkmate';
-      gameState.winner = gameState.turn === 'white' ? 'black' : 'white'; // The other player wins
-      console.log('♔ Checkmate! Winner:', gameState.winner);
-    } else if (isStalemate) {
+      gameState.winner = game.turn === 'white' ? 'black' : 'white';
+      console.log(`🏁 Checkmate! ${gameState.winner} wins.`);
+    } else if (game.isStalemate()) {
       gameState.status = 'stalemate';
-      gameState.winner = null;
-      console.log('🤝 Stalemate - Draw!');
-    } else if (isDraw) {
-      gameState.status = 'draw';
-      gameState.winner = null;
-      console.log('🤝 Draw!');
+      gameState.winner = 'draw';
+      console.log('🏁 Stalemate! The game is a draw.');
+    } else if (game.isInsufficientMaterial()) {
+      gameState.status = 'insufficient_material';
+      gameState.winner = 'draw';
+      console.log('🏁 Insufficient material! The game is a draw.');
     } else {
       gameState.status = 'playing';
       gameState.winner = null;
-      if (isInCheck) {
-        console.log('⚠️ Check!');
-      }
     }
-    
-    gameState.inCheck = isInCheck;
+
+    gameState.inCheck = game.isCheck();
   }
 
   async function makeAIMove() {
-    console.log('🤖 Making AI move...');
-    
-    // Don't make AI moves if already thinking
-    if (gameState.aiThinking) {
-      console.log('🚫 AI move blocked: already thinking');
+    // Guard against unexpected calls
+    if (
+      gameState.mode !== 'human_vs_ai' ||
+      gameState.status !== 'playing' ||
+      gameState.turn === gameState.playerColor ||
+      gameState.aiThinking
+    ) {
+      console.log('🚫 AI move blocked:', {
+        mode: gameState.mode,
+        status: gameState.status,
+        turn: gameState.turn,
+        playerColor: gameState.playerColor,
+        aiThinking: gameState.aiThinking
+      });
       return;
     }
-    
-    // Don't make AI moves if we're in replay mode
-    if (showReplayMode) {
-      console.log('🚫 AI move blocked: in replay mode');
-      return;
-    }
-    
-    // Don't make AI moves if game is not in playing state
-    if (gameState.status !== 'playing') {
-      console.log('🚫 AI move blocked: game not playing');
-      return;
-    }
-    
-    console.log('Current game state:', {
-      fen: gameState.fen,
-      turn: gameState.turn,
-      playerColor: gameState.playerColor,
-      mode: gameState.mode,
-      elo: gameState.aiEloRating
-    });
-    
-    gameState.aiThinking = true;
+
     try {
-      const result = await stockfish.getBestMove(gameState.fen, gameState.aiEloRating, gameState.aiTimeLimit);
-      console.log('🎯 AI move result:', result);
-      
-      if (result && result.move) {
-        // Parse the UCI move and apply it
-        const uciMove = parseUci(result.move);
-        console.log('📝 Parsed UCI move:', uciMove);
-        if (uciMove) {
-          // Update evaluation with AI's assessment
-          if (result.evaluation) {
-            evaluation = result.evaluation;
-            evaluation.bestMove = result.move;
-            console.log('📊 Updated evaluation:', evaluation);
-          }
-          
-          handleMove(uciMove, true); // Mark as AI move to prevent infinite loop
+      console.log('🤖 AI starting to think...');
+      gameState.aiThinking = true;
+      updateGameState();
+
+      const aiResult = await stockfish.getBestMove(gameState.fen, gameState.aiEloRating, gameState.aiTimeLimit);
+
+      if (aiResult && aiResult.move) {
+        console.log('🤖 AI found best move:', aiResult);
+
+        // Store evaluation if provided
+        if (aiResult.evaluation) {
+          evaluation = aiResult.evaluation;
+        }
+
+        const uciMove = parseUci(aiResult.move);
+        if (uciMove && game.isLegal(uciMove)) {
+          console.log('🤖 AI making move:', aiResult.move);
+          // AI moves also go through the same flow - sync to server
+          await handleMove(uciMove);
         } else {
-          console.error('❌ Failed to parse UCI move:', result.move);
+          console.error('❌ AI generated an illegal move:', aiResult.move);
         }
       } else {
-        console.error('❌ No move returned from AI');
+        console.log('🤔 AI has no move to make.');
       }
-    } catch (e) {
-      console.error("❌ Error getting AI move:", e);
+    } catch (error) {
+      console.error('❌ Error during AI move:', error);
     } finally {
       gameState.aiThinking = false;
+      updateGameState();
     }
   }
 
-  function handleNewGame(mode, playerColor, aiEloRating, aiTimeLimit) {
-    console.log('🎮 Starting new game:', { mode, playerColor, aiEloRating, aiTimeLimit });
+  function updateGameState() {
+    if (!game) return;
+    const newFen = makeFen(game.toSetup());
+    gameState.fen = newFen;
+    gameState.turn = game.turn;
+    checkGameStatus();
+  }
+
+  async function handleNewGame(mode, playerColor, aiElo, aiTimeLimit, syncToServer = true) {
+    console.log('🎮 Starting new game:', { mode, playerColor, aiElo, aiTimeLimit });
     
-    // Reset to starting position
-    const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-    const setup = parseFen(startingFen).unwrap();
-    game = Chess.fromSetup(setup).unwrap();
+    // Update local settings first
+    gameState.mode = mode;
+    gameState.playerColor = playerColor;
+    gameState.aiEloRating = aiElo;
+    gameState.aiTimeLimit = aiTimeLimit;
     
-    gameState = {
-      fen: startingFen,
-      moves: [],
-      currentMoveIndex: -1,
-      turn: 'white',
-      status: 'playing',
-      mode,
-      playerColor,
-      aiThinking: false,
-      aiEloRating,
-      aiTimeLimit,
-      inCheck: false,
-      winner: null,
-    };
-    
-    console.log('🎮 Game state updated:', gameState);
-    
-    if (mode === 'human_vs_ai' && playerColor === 'black') {
-      console.log('🤖 Player chose black, AI should move first');
-      setTimeout(() => makeAIMove(), 500); // Give UI time to update
+    // If we need to sync to server, do that and wait for server broadcast
+    if (syncToServer) {
+      await syncNewGameToServer();
+      // Server will broadcast the reset, and we'll handle it in handleWebSocketMessage
+    } else {
+      // Only for local resets (shouldn't happen in new architecture)
+      game = Chess.default();
+      gameState = {
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        moves: [],
+        currentMoveIndex: -1,
+        turn: 'white',
+        status: 'playing',
+        mode,
+        playerColor,
+        aiThinking: false,
+        aiEloRating: aiElo,
+        aiTimeLimit: aiTimeLimit,
+        inCheck: false,
+        winner: null,
+      };
+      updateGameState();
     }
+  }
+
+  function handleBoardReset() {
+    handleNewGame(gameState.mode, gameState.playerColor, gameState.aiEloRating, gameState.aiTimeLimit, true);
   }
 
   async function analyzePosition() {
@@ -486,6 +658,7 @@
     turn={gameState.turn}
     aiThinking={gameState.aiThinking}
     inCheck={gameState.inCheck}
+    sessionId={sessionId}
   />
 
   
@@ -518,6 +691,9 @@
     flex-basis: 70%;
     display: flex;
     flex-direction: column;
+    justify-content: flex-start;
+    flex-grow: 1;
+    flex-shrink: 1;
   }
   .side-panel {
     flex-basis: 30%;
@@ -563,5 +739,14 @@
   
   .btn-secondary:hover {
     background: var(--border, #444);
+  }
+
+  main {
+    flex-grow: 1;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
   }
 </style>

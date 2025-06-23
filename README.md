@@ -2,15 +2,14 @@
 
 A comprehensive chess training application with AI-powered analysis using Stockfish NNUE engine and MCP (Model Context Protocol) integration for advanced coaching capabilities.
 
-![Chess Trainer Screenshot](https://via.placeholder.com/800x600/2c2f33/ffffff?text=Chess+Trainer+Interface)
-
 ## ✨ Features
 
 ### 🎯 Core Chess Features
-- **Interactive Chess Board**: Drag-and-drop interface powered by Chessground
+- **Interactive Chess Board**: Drag-and-drop interface with real-time move validation
 - **Real-time Engine Analysis**: Stockfish NNUE WASM integration for local analysis
 - **Evaluation Bar**: Visual representation of position evaluation with depth info
 - **Human vs AI**: Play against AI with adjustable ELO (800-2800) and thinking time
+- **Human vs Human**: Local multiplayer chess games
 - **Position Analysis**: Get best moves and evaluations for any position
 
 ### 🎬 Replay & Learning
@@ -18,6 +17,12 @@ A comprehensive chess training application with AI-powered analysis using Stockf
 - **Sample Games**: Built-in famous games (Scholar's Mate, Italian Game, Sicilian Defense)
 - **Move Navigation**: Browse through game history with analysis
 - **Board Flipping**: View games from both perspectives
+
+### 🔄 Server-Authoritative Architecture
+- **Real-time Synchronization**: All moves are validated and synchronized through the server
+- **WebSocket Communication**: Instant updates across all connected clients
+- **State Persistence**: Game state is maintained on the server for reliability
+- **Unified Move Handling**: Both human and AI moves follow the same server-sync flow
 
 ### 🤖 MCP Integration
 - **14 Chess Analysis & Game Tools**: Complete set of MCP tools for AI assistants
@@ -39,6 +44,30 @@ This will automatically:
 - Install all dependencies
 - Build the frontend
 - Start the server on http://localhost:3456
+- Open the chess interface in your browser
+
+### 🎮 Playing Chess
+
+1. **Human vs Human**: Default mode - take turns making moves
+2. **Human vs AI**: Choose your color and AI difficulty
+   - AI ELO range: 800-2800
+   - Thinking time: 0.1s to 10s
+   - AI automatically moves after your turn
+3. **Game Analysis**: Use the evaluation bar and analysis tools
+4. **Replay Mode**: Load and replay famous chess games
+
+## 🏗️ Architecture
+
+### Client-Server Communication Flow
+```
+Move Made → Sync to Server → Server Validates → WebSocket Broadcast → Client Updates → Check AI Turn
+```
+
+### Key Components
+- **Frontend**: Svelte-based chess interface with Chessground board
+- **Backend**: Node.js server with Express API and WebSocket support
+- **Engine**: Stockfish NNUE for move analysis and AI play
+- **MCP Server**: JSON-RPC interface for AI assistant integration
 
 ### 🤖 MCP Integration for AI Assistants
 
