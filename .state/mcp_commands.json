@@ -1,29 +1,313 @@
 [
   {
-    "id": "cmd_1750628859854_9h9oqj5fu",
-    "timestamp": "2025-06-22T21:47:39.854Z",
+    "id": "cmd_1750629341851_sr1i00602",
+    "timestamp": "2025-06-22T21:55:41.852Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e2e4",
+    "sanMove": "e2e4",
+    "newFen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2",
+    "processedAt": "2025-06-22T21:57:56.175Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750629663053_qcusf7qnf",
+    "timestamp": "2025-06-22T22:01:03.053Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "Nf3",
+    "sanMove": "Nf3",
+    "newFen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2",
+    "processedAt": "2025-06-22T22:01:03.379Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630007324_mzh34y0ar",
+    "timestamp": "2025-06-22T22:06:47.324Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e2e3",
+    "sanMove": "e2e3",
+    "newFen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2",
+    "processedAt": "2025-06-22T22:06:47.674Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630192485_w5otpyix0",
+    "timestamp": "2025-06-22T22:09:52.485Z",
+    "processed": true,
+    "type": "reset_game",
+    "gameId": "test_game_123",
+    "processedAt": "2025-06-22T22:13:05.395Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630199843_awcl8asls",
+    "timestamp": "2025-06-22T22:09:59.843Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e4",
+    "sanMove": "e4",
+    "newFen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2",
+    "processedAt": "2025-06-22T22:13:05.396Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630248617_qzvzc10v6",
+    "timestamp": "2025-06-22T22:10:48.617Z",
+    "processed": true,
+    "type": "reset_game",
+    "gameId": "test_game_123",
+    "processedAt": "2025-06-22T22:13:05.396Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630261200_047ldy54g",
+    "timestamp": "2025-06-22T22:11:01.200Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e4",
+    "sanMove": "e4",
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "processedAt": "2025-06-22T22:13:05.397Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630398027_62kd0c0z0",
+    "timestamp": "2025-06-22T22:13:18.027Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e5",
+    "sanMove": "e5",
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "processedAt": "2025-06-22T22:13:18.402Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630475113_4exvmq7n5",
+    "timestamp": "2025-06-22T22:14:35.113Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e4",
+    "sanMove": "e4",
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "processedAt": "2025-06-22T22:14:35.499Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630480573_0l6i3hx3z",
+    "timestamp": "2025-06-22T22:14:40.573Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e5",
+    "sanMove": "e5",
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "processedAt": "2025-06-22T22:14:41.506Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630710700_xik0l51m1",
+    "timestamp": "2025-06-22T22:18:30.700Z",
+    "processed": true,
+    "type": "reset_game",
+    "gameId": "test_game_123",
+    "processedAt": "2025-06-22T22:18:31.611Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630741014_p0ova1x2s",
+    "timestamp": "2025-06-22T22:19:01.014Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e2e4",
+    "sanMove": "e2e4",
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "processedAt": "2025-06-22T22:19:01.642Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630819184_32k732p4x",
+    "timestamp": "2025-06-22T22:20:19.184Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e7e5",
+    "sanMove": "e7e5",
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "processedAt": "2025-06-22T22:20:19.729Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630890285_he3093o22",
+    "timestamp": "2025-06-22T22:21:30.285Z",
+    "processed": true,
+    "type": "reset_game",
+    "gameId": "test_game_123",
+    "processedAt": "2025-06-22T22:21:30.809Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630898342_uahgqt8th",
+    "timestamp": "2025-06-22T22:21:38.342Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e2e4",
+    "sanMove": "e2e4",
+    "processedAt": "2025-06-22T22:21:38.821Z",
+    "error": "Cannot read properties of undefined (reading 'includes')"
+  },
+  {
+    "id": "cmd_1750630948521_65fa1s1ar",
+    "timestamp": "2025-06-22T22:22:28.521Z",
+    "processed": true,
+    "type": "reset_game",
+    "gameId": "test_game_123",
+    "processedAt": "2025-06-22T22:22:29.178Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750630955774_ebzcv6jle",
+    "timestamp": "2025-06-22T22:22:35.774Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e2e4",
+    "sanMove": "e2e4",
+    "processedAt": "2025-06-22T22:22:36.183Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750631017445_r4dqw9wyj",
+    "timestamp": "2025-06-22T22:23:37.445Z",
+    "processed": true,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e2e4",
+    "sanMove": "e2e4",
+    "processedAt": "2025-06-22T22:23:38.420Z",
+    "result": {
+      "success": true
+    }
+  },
+  {
+    "id": "cmd_1750631051342_plqylg8oo",
+    "timestamp": "2025-06-22T22:24:11.342Z",
+    "processed": false,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e2e4",
+    "sanMove": "e2e4"
+  },
+  {
+    "id": "cmd_1750641216965_x45rbfl6b",
+    "timestamp": "2025-06-23T01:13:36.965Z",
+    "processed": false,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e2e4",
+    "sanMove": "e2e4",
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+  },
+  {
+    "id": "cmd_1750641241476_ertde9g49",
+    "timestamp": "2025-06-23T01:14:01.476Z",
+    "processed": false,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e7e5",
+    "sanMove": "e7e5",
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+  },
+  {
+    "id": "cmd_1750641329071_3aocl7eei",
+    "timestamp": "2025-06-23T01:15:29.071Z",
     "processed": false,
     "type": "make_move",
     "gameId": "test_game_123",
     "move": "Nf3",
     "sanMove": "Nf3",
-    "newFen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2"
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
   },
   {
-    "id": "cmd_1750628872307_33uxs684h",
-    "timestamp": "2025-06-22T21:47:52.307Z",
-    "processed": false,
-    "type": "reset_game",
-    "gameId": "test_game_123"
-  },
-  {
-    "id": "cmd_1750629169175_fr4i2d9cl",
-    "timestamp": "2025-06-22T21:52:49.175Z",
+    "id": "cmd_1750641406453_mrwxo11uh",
+    "timestamp": "2025-06-23T01:16:46.453Z",
     "processed": false,
     "type": "make_move",
     "gameId": "test_game_123",
-    "move": "Nc6",
-    "sanMove": "Nc6",
-    "newFen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2"
+    "move": "g1f3",
+    "sanMove": "g1f3",
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+  },
+  {
+    "id": "cmd_1750641660241_1m3lvi7k9",
+    "timestamp": "2025-06-23T01:21:00.241Z",
+    "processed": false,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e2e3",
+    "sanMove": "e2e3",
+    "newFen": "rnbqkbnr/ppp1pppp/8/3p4/5P2/8/PPPPP1PP/RNBQKBNR w KQkq - 0 2"
+  },
+  {
+    "id": "cmd_1750641811724_zxbmcqk7j",
+    "timestamp": "2025-06-23T01:23:31.724Z",
+    "processed": false,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e2e4",
+    "sanMove": "e2e4",
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+  },
+  {
+    "id": "cmd_1750641908708_wtybx20sj",
+    "timestamp": "2025-06-23T01:25:08.708Z",
+    "processed": false,
+    "type": "make_move",
+    "gameId": "test_game_123",
+    "move": "e7e5",
+    "sanMove": "e7e5",
+    "newFen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
   }
 ]

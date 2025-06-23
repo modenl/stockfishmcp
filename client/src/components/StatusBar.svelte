@@ -1,5 +1,5 @@
 <script>
-  import { Wifi, WifiOff, Cpu, Clock } from 'lucide-svelte';
+  import { Wifi, WifiOff, Cpu, Clock, ShieldCheck, AlertTriangle, MessageCircle, Hourglass } from 'lucide-svelte';
   import { languageStore } from '../stores/language.js';
 
   export let connectionStatus = 'disconnected';
@@ -10,9 +10,18 @@
   export let turn = 'white';
   export let aiThinking = false;
   export let inCheck = false;
+  export let sessionId = '...';
   
   $: currentLang = $languageStore;
   $: t = languageStore.translations[currentLang];
+
+  const statusIcons = {
+    connected: Wifi,
+    disconnected: Wifi,
+    reconnecting: Hourglass,
+    failed: Wifi,
+    error: Wifi,
+  };
 
   function getConnectionIcon(status) {
     switch (status) {
@@ -56,10 +65,13 @@
   }
 </script>
 
-<div class="status-bar">
-  <div class="status-section">
-    <div class="status-indicator {getConnectionClass(connectionStatus)}">
-      <svelte:component this={getConnectionIcon(connectionStatus)} size={16} />
+<div class="status-bar" class:connected={connectionStatus === 'connected'} class:disconnected={connectionStatus !== 'connected'}>
+  <div class="status-left">
+    <div class="game-id-status">
+      <span>ID: {sessionId}</span>
+    </div>
+    <div class="status-item" title="WebSocket Connection">
+      <svelte:component this={statusIcons[connectionStatus]} size="16" />
       <span class="status-text">
         {#if connectionStatus === 'connected'}
           {currentLang === 'zh' ? '服务器已连接' : 'Server Connected'}
@@ -74,8 +86,7 @@
         {/if}
       </span>
     </div>
-
-    <div class="status-indicator {engineReady ? 'status-connected' : 'status-disconnected'}">
+    <div class="status-item" title="Chess Engine">
       <Cpu size={16} />
       <span class="status-text">
         {#if engineReady}
@@ -157,20 +168,30 @@
     font-size: var(--text-sm);
   }
 
-  .status-section {
+  .status-left, .status-right {
     display: flex;
-    gap: var(--spacing-lg);
     align-items: center;
+    gap: 1rem;
   }
 
-  .status-indicator {
+  .game-id-status {
+    font-family: monospace;
+    font-size: 0.9em;
+    padding: 2px 6px;
+    background-color: #2a2d31;
+    border-radius: 4px;
+    color: #99aab5;
+  }
+
+  .status-item {
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: var(--radius-lg);
-    font-size: var(--text-xs);
-    font-weight: 500;
+  }
+
+  .status-text {
+    color: var(--text-secondary);
+    font-family: 'Courier New', monospace;
   }
 
   .session-info {

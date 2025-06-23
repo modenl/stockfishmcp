@@ -10,6 +10,7 @@
   export let onLoadCurrentGame = () => {};
   export let onLoadSampleGame = () => {};
   export let onFileUpload = () => {};
+  export let onResetAI = () => {};
 
   let showGameModeModal = false;
   let selectedMode = 'human_vs_human';
@@ -177,6 +178,16 @@
     >
       {isAnalyzing ? (t.analyzing || 'Analyzing...') : t.analyzePosition}
     </button>
+    
+    {#if gameState.mode === 'human_vs_ai' && gameState.aiThinking}
+      <button 
+        class="btn btn-warning" 
+        on:click={onResetAI}
+        title="AI思考时间过长时使用"
+      >
+        🔄 重置AI
+      </button>
+    {/if}
     
     {#if analysisResult}
       <div class="analysis-result">
@@ -646,6 +657,16 @@
 
   .btn-secondary:hover:not(:disabled) {
     background: #555;
+  }
+
+  .btn-warning {
+    background: #ff9500;
+    color: white;
+    border: 1px solid #ff7300;
+  }
+
+  .btn-warning:hover:not(:disabled) {
+    background: #ff7300;
   }
 
   .modal-overlay {

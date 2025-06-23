@@ -8,7 +8,7 @@ const messageSchemas = {
     type: 'object',
     properties: {
       type: { type: 'string', const: 'join_session' },
-      sessionId: { type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' }
+      sessionId: { type: 'string', minLength: 1, maxLength: 50 }
     },
     required: ['type', 'sessionId'],
     additionalProperties: false
@@ -18,7 +18,7 @@ const messageSchemas = {
     type: 'object',
     properties: {
       type: { type: 'string', const: 'move' },
-      sessionId: { type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' },
+      sessionId: { type: 'string', minLength: 1, maxLength: 50 },
       move: {
         type: 'object',
         properties: {
@@ -42,7 +42,7 @@ const messageSchemas = {
     type: 'object',
     properties: {
       type: { type: 'string', const: 'request_analysis' },
-      sessionId: { type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' },
+      sessionId: { type: 'string', minLength: 1, maxLength: 50 },
       fen: { type: 'string', minLength: 10, maxLength: 100 },
       depth: { type: 'number', minimum: 1, maximum: 30 }
     },
@@ -54,7 +54,7 @@ const messageSchemas = {
     type: 'object',
     properties: {
       type: { type: 'string', const: 'end_session' },
-      sessionId: { type: 'string', pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' },
+      sessionId: { type: 'string', minLength: 1, maxLength: 50 },
       result: {
         type: 'object',
         properties: {
@@ -66,6 +66,51 @@ const messageSchemas = {
       }
     },
     required: ['type', 'sessionId', 'result'],
+    additionalProperties: false
+  },
+
+  update_game_mode: {
+    type: 'object',
+    properties: {
+      type: { type: 'string', const: 'update_game_mode' },
+      sessionId: { type: 'string', minLength: 1, maxLength: 50 },
+      gameMode: { type: 'string', enum: ['human_vs_human', 'human_vs_ai'] },
+      playerColor: { type: 'string', enum: ['white', 'black'] },
+      aiEloRating: { type: 'number', minimum: 800, maximum: 3200 },
+      aiTimeLimit: { type: 'number', minimum: 100, maximum: 30000 }
+    },
+    required: ['type', 'sessionId', 'gameMode'],
+    additionalProperties: false
+  },
+
+  sync_move: {
+    type: 'object',
+    properties: {
+      type: { type: 'string', const: 'sync_move' },
+      sessionId: { type: 'string', minLength: 1, maxLength: 50 },
+      move: {
+        type: 'object',
+        properties: {
+          san: { type: 'string', minLength: 2, maxLength: 8 },
+          uci: { type: 'string', minLength: 4, maxLength: 5 }
+        },
+        required: ['san', 'uci'],
+        additionalProperties: false
+      },
+      fen: { type: 'string', minLength: 10, maxLength: 100 },
+      turn: { type: 'string', enum: ['white', 'black'] }
+    },
+    required: ['type', 'sessionId', 'move', 'fen', 'turn'],
+    additionalProperties: false
+  },
+
+  reset_game: {
+    type: 'object',
+    properties: {
+      type: { type: 'string', const: 'reset_game' },
+      sessionId: { type: 'string', minLength: 1, maxLength: 50 }
+    },
+    required: ['type', 'sessionId'],
     additionalProperties: false
   }
 };
@@ -200,8 +245,8 @@ export function validateSessionId(sessionId) {
     return false;
   }
 
-  // UUID v4 pattern
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(sessionId);
+  // Allow alphanumeric session IDs with underscores and hyphens
+  return /^[a-zA-Z0-9_-]{1,50}$/.test(sessionId);
 }
 
 export function sanitizeString(str, maxLength = 100) {
