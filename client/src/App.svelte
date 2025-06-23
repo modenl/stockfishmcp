@@ -62,7 +62,24 @@
 
   let unsubscribeWS;
 
-  let sessionId = 'test_game_123'; // Default, update if your app uses a different session mechanism
+  let sessionId = 'test_game_123'; // Default game session
+  let clientId = generateClientId(); // Unique client identifier
+  let clientName = generateClientName(); // Human-readable client name
+  let connectedClients = []; // List of connected clients
+
+  // Generate unique client ID
+  function generateClientId() {
+    return 'client_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now().toString(36);
+  }
+
+  // Generate random client name
+  function generateClientName() {
+    const adjectives = ['Swift', 'Clever', 'Bold', 'Wise', 'Quick', 'Sharp', 'Bright', 'Noble', 'Brave', 'Smart'];
+    const nouns = ['Knight', 'Bishop', 'Rook', 'Queen', 'King', 'Pawn', 'Player', 'Master', 'Champion', 'Warrior'];
+    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    return `${adjective}${noun}`;
+  }
 
   onMount(() => {
     // stockfish service initializes itself automatically.
@@ -72,15 +89,17 @@
     
     // Connect to WebSocket server
     const wsUrl = `ws://${window.location.hostname}:3456`;
-    console.log('🔌 Connecting to WebSocket:', wsUrl);
+    console.log('🔌 Connecting to WebSocket:', wsUrl, 'as', clientName, `(${clientId})`);
     webSocketStore.connect(wsUrl);
     
     // Join the session once connected
     setTimeout(() => {
-      console.log('🔗 Joining WebSocket session: test_game_123');
+      console.log('🔗 Joining WebSocket session:', sessionId, 'as', clientName);
       webSocketStore.sendMessage({
         type: 'join_session',
-        sessionId: 'test_game_123'
+        sessionId: sessionId,
+        clientId: clientId,
+        clientName: clientName
       });
       
       // Load current game state from server
@@ -99,26 +118,47 @@
   });
 
   function handleWebSocketMessage(message) {
-    console.log('WebSocket message received in App.svelte:', message);
+    console.log(`[${clientName}] WebSocket message received:`, message);
     // Only process messages that are objects and have a type
     if (!message || typeof message !== 'object' || !message.type) return;
 
     switch (message.type) {
       case 'mcp_move':
         // Only handle moves for the current session/game
-        if (message.sessionId === 'test_game_123') {
+        if (message.sessionId === sessionId) {
           handleServerMove(message);
         }
         break;
       case 'mcp_game_reset':
         // Handle game reset from server
-        if (message.gameId === 'test_game_123') {
+        if (message.gameId === sessionId) {
           handleServerReset(message);
         }
         break;
+      case 'client_joined':
+        // Handle new client joining
+        console.log(`👋 Client joined: ${message.clientName} (${message.clientId})`);
+        if (!connectedClients.find(c => c.clientId === message.clientId)) {
+          connectedClients = [...connectedClients, {
+            clientId: message.clientId,
+            clientName: message.clientName,
+            joinedAt: new Date().toISOString()
+          }];
+        }
+        break;
+      case 'client_left':
+        // Handle client leaving
+        console.log(`👋 Client left: ${message.clientName} (${message.clientId})`);
+        connectedClients = connectedClients.filter(c => c.clientId !== message.clientId);
+        break;
+      case 'clients_list':
+        // Update list of connected clients
+        console.log('👥 Connected clients updated:', message.clients);
+        connectedClients = message.clients || [];
+        break;
       // You can add more cases for other message types if needed
       default:
-        console.log('🤷 Unhandled WebSocket message type:', message.type);
+        console.log(`[${clientName}] 🤷 Unhandled WebSocket message type:`, message.type);
         break;
     }
   }
@@ -185,18 +225,22 @@
 
   async function loadGameStateFromServer() {
     try {
-      console.log('🔄 Loading game state from server...');
+      console.log(`[${clientName}] 🔄 Loading game state from server...`);
       const response = await fetch('/api/mcp/get_game_state', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ game_id: 'test_game_123' })
+        body: JSON.stringify({ 
+          game_id: sessionId,
+          client_id: clientId,
+          client_name: clientName
+        })
       });
       
       if (response.ok) {
         const result = await response.json();
-        console.log('📊 Server game state loaded:', result);
+        console.log(`[${clientName}] 📊 Server game state loaded:`, result);
         
         // Parse the game state from server response
         // The server returns a text message, we need to extract the FEN and moves
@@ -206,7 +250,7 @@
           
           if (fenMatch) {
             const serverFen = fenMatch[1].trim();
-            console.log('🎯 Server FEN:', serverFen);
+            console.log(`[${clientName}] 🎯 Server FEN:`, serverFen);
             
             // Load this position into the client
             try {
@@ -220,31 +264,31 @@
               // Parse move history if available
               if (movesMatch) {
                 const moveHistory = movesMatch[1].trim();
-                console.log('📝 Server move history:', moveHistory);
+                console.log(`[${clientName}] 📝 Server move history:`, moveHistory);
                 // TODO: Parse and apply move history to gameState.moves
               }
               
               // Ensure UI is updated with the loaded state
               updateGameState();
               
-              console.log('✅ Game state synchronized with server');
+              console.log(`[${clientName}] ✅ Game state synchronized with server`);
               
             } catch (e) {
-              console.error('❌ Failed to parse server FEN:', e);
+              console.error(`[${clientName}] ❌ Failed to parse server FEN:`, e);
             }
           }
         }
       } else {
-        console.error('❌ Failed to load game state from server');
+        console.error(`[${clientName}] ❌ Failed to load game state from server`);
       }
     } catch (error) {
-      console.error('❌ Error loading game state from server:', error);
+      console.error(`[${clientName}] ❌ Error loading game state from server:`, error);
     }
   }
 
   async function syncMoveToServer(move, oldFen, newFen) {
     try {
-      console.log('💾 Syncing move to server:', { move: move.san, uci: makeUci(move) });
+      console.log(`[${clientName}] 💾 Syncing move to server:`, { move: move.san, uci: makeUci(move) });
       
       const response = await fetch('/api/mcp/make_move', {
         method: 'POST',
@@ -252,8 +296,10 @@
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          game_id: 'test_game_123', 
-          move: makeUci(move)
+          game_id: sessionId, 
+          move: makeUci(move),
+          client_id: clientId,
+          client_name: clientName
         })
       });
       
@@ -659,6 +705,8 @@
     aiThinking={gameState.aiThinking}
     inCheck={gameState.inCheck}
     sessionId={sessionId}
+    clientName={clientName}
+    connectedClients={connectedClients}
   />
 
   

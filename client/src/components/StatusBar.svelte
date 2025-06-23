@@ -1,5 +1,5 @@
 <script>
-  import { Wifi, WifiOff, Cpu, Clock, ShieldCheck, AlertTriangle, MessageCircle, Hourglass } from 'lucide-svelte';
+  import { Wifi, WifiOff, Cpu, Clock, ShieldCheck, AlertTriangle, MessageCircle, Hourglass, Users } from 'lucide-svelte';
   import { languageStore } from '../stores/language.js';
 
   export let connectionStatus = 'disconnected';
@@ -11,6 +11,8 @@
   export let aiThinking = false;
   export let inCheck = false;
   export let sessionId = '...';
+  export let clientName = 'Player';
+  export let connectedClients = [];
   
   $: currentLang = $languageStore;
   $: t = languageStore.translations[currentLang];
@@ -67,8 +69,9 @@
 
 <div class="status-bar" class:connected={connectionStatus === 'connected'} class:disconnected={connectionStatus !== 'connected'}>
   <div class="status-left">
-    <div class="game-id-status">
-      <span>ID: {sessionId}</span>
+    <div class="client-info">
+      <span class="client-name">{clientName}</span>
+      <span class="game-id">ID: {sessionId}</span>
     </div>
     <div class="status-item" title="WebSocket Connection">
       <svelte:component this={statusIcons[connectionStatus]} size="16" />
@@ -86,6 +89,17 @@
         {/if}
       </span>
     </div>
+    {#if connectedClients.length > 0}
+      <div class="status-item" title="Connected Clients">
+        <Users size={16} />
+        <span class="status-text">{connectedClients.length} {currentLang === 'zh' ? '个客户端' : 'clients'}</span>
+        <div class="clients-tooltip">
+          {#each connectedClients as client}
+            <div class="client-item">{client.clientName}</div>
+          {/each}
+        </div>
+      </div>
+    {/if}
     <div class="status-item" title="Chess Engine">
       <Cpu size={16} />
       <span class="status-text">
@@ -174,7 +188,19 @@
     gap: 1rem;
   }
 
-  .game-id-status {
+  .client-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .client-name {
+    font-weight: 600;
+    color: var(--primary);
+    font-size: 0.95em;
+  }
+
+  .game-id {
     font-family: monospace;
     font-size: 0.9em;
     padding: 2px 6px;
@@ -187,6 +213,31 @@
     display: flex;
     align-items: center;
     gap: var(--spacing-xs);
+    position: relative;
+  }
+
+  .status-item:hover .clients-tooltip {
+    display: block;
+  }
+
+  .clients-tooltip {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: var(--spacing-sm);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    min-width: 150px;
+  }
+
+  .client-item {
+    padding: 2px 0;
+    font-size: 0.9em;
+    color: var(--text-primary);
   }
 
   .status-text {

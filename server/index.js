@@ -24,7 +24,8 @@ class ChessTrainerServer {
     this.wss = new WebSocketServer({ server: this.server });
     this.sessionManager = new SessionManager();
     this.mcpClient = new MCPClient();
-    this.clients = new Map(); // sessionId -> ws connection
+    this.clients = new Map(); // sessionId -> Set of client objects
+    this.clientInfo = new Map(); // clientId -> client info
     this.gameStates = new Map(); // gameId -> game state
     
     // Increase max listeners to prevent warning
@@ -163,7 +164,7 @@ class ChessTrainerServer {
           console.log('=== ❌ GET_GAME_STATE FAILED ===\n');
           return res.json({
             message: `❌ Game Not Found\n\n` +
-                    `�� Game ID "${game_id}" does not exist or is no longer active.\n` +
+                    `🎯 Game ID "${game_id}" does not exist or is no longer active.\n` +
                     `💡 Use list_active_games to see available games.`
           });
         }
@@ -314,22 +315,18 @@ class ChessTrainerServer {
         console.log('   📍 Current FEN:', gameState.fen);
         console.log('   🎲 Current turn:', gameState.turn);
 
-        // 通过WebSocket广播更新
-        const client = this.clients.get(game_id);
-        if (client && client.readyState === client.OPEN) {
-          console.log('📡 Broadcasting move to client via WebSocket:', {
-            type: 'mcp_move',
-            sessionId: game_id,
-            ...moveData
-          });
-          client.send(JSON.stringify({
-            type: 'mcp_move',
-            sessionId: game_id,
-            ...moveData
-          }));
-        } else {
-          console.log('⚠️  No WebSocket client found for game:', game_id);
-        }
+        // 通过WebSocket广播更新到所有客户端
+        console.log('📡 Broadcasting move to all clients via WebSocket:', {
+          type: 'mcp_move',
+          sessionId: game_id,
+          ...moveData
+        });
+        
+        this.broadcastToSession(game_id, {
+          type: 'mcp_move',
+          sessionId: game_id,
+          ...moveData
+        });
 
         console.log('=== ✅ MAKE_MOVE COMPLETED ===\n');
 
@@ -436,21 +433,17 @@ class ChessTrainerServer {
         console.log('   🎨 Player color:', gameState.playerColor);
         console.log('   🤖 AI ELO:', gameState.aiEloRating);
 
-        // 广播重置到所有连接的客户端
-        const resetMessage = JSON.stringify({
+        // 广播重置到会话中的所有客户端
+        const resetMessage = {
           type: 'mcp_game_reset',
           gameId: game_id,
           fen: gameState.fen,
           turn: gameState.turn
-        });
+        };
 
-        console.log('📡 Broadcasting reset to all clients:', resetMessage);
+        console.log('📡 Broadcasting reset to all clients in session:', resetMessage);
 
-        this.wss.clients.forEach(client => {
-          if (client.readyState === 1) {
-            client.send(resetMessage);
-          }
-        });
+        this.broadcastToSession(game_id, resetMessage);
 
         console.log('=== ✅ RESET_GAME COMPLETED ===\n');
 
@@ -503,24 +496,76 @@ class ChessTrainerServer {
       });
 
       ws.on('close', () => {
-        // Clean up client mapping
-        for (const [sessionId, client] of this.clients.entries()) {
-          if (client === ws) {
-            this.clients.delete(sessionId);
-            break;
+        // Clean up client mappings
+        let removedClient = null;
+        
+        // Find and remove the client from all sessions
+        for (const [sessionId, clientSet] of this.clients.entries()) {
+          for (const client of clientSet) {
+            if (client.ws === ws) {
+              removedClient = client;
+              clientSet.delete(client);
+              
+              // Remove empty session sets
+              if (clientSet.size === 0) {
+                this.clients.delete(sessionId);
+              }
+              
+              // Remove from client info
+              this.clientInfo.delete(client.clientId);
+              
+              // Broadcast client left to remaining clients in session
+              this.broadcastToSession(sessionId, {
+                type: 'client_left',
+                clientId: client.clientId,
+                clientName: client.clientName,
+                sessionId: sessionId
+              });
+              
+              break;
+            }
           }
+          if (removedClient) break;
         }
+        
         console.log('WebSocket connection closed');
       });
     });
   }
 
   async handleWebSocketMessage(ws, message) {
-    const { type, sessionId } = message;
+    const { type, sessionId, clientId, clientName } = message;
 
     switch (type) {
       case 'join_session':
-        this.clients.set(sessionId, ws);
+        // Create client object
+        const client = {
+          ws: ws,
+          clientId: clientId,
+          clientName: clientName,
+          sessionId: sessionId,
+          joinedAt: new Date().toISOString()
+        };
+        
+        // Add to session clients
+        if (!this.clients.has(sessionId)) {
+          this.clients.set(sessionId, new Set());
+        }
+        this.clients.get(sessionId).add(client);
+        
+        // Store client info
+        this.clientInfo.set(clientId, client);
+        
+        console.log(`👋 Client joined: ${clientName} (${clientId}) in session ${sessionId}`);
+        
+        // Broadcast to other clients in session
+        this.broadcastToSession(sessionId, {
+          type: 'client_joined',
+          clientId: clientId,
+          clientName: clientName,
+          sessionId: sessionId
+        });
+        
         const session = this.sessionManager.getSession(sessionId);
         
         // Get existing game state first
@@ -564,10 +609,19 @@ class ChessTrainerServer {
           moves: gameState.moves?.length || 0
         });
         
+        // Get current clients in session
+        const connectedClients = this.getSessionClients(sessionId);
+        
         ws.send(JSON.stringify({
           type: 'session_state',
           session: session || null,
           gameState: gameState
+        }));
+        
+        // Send clients list to the joining client
+        ws.send(JSON.stringify({
+          type: 'clients_list',
+          clients: connectedClients
         }));
         break;
 
@@ -917,6 +971,33 @@ class ChessTrainerServer {
         console.log('HTTP server closed');
       }
     });
+  }
+
+  // Helper method to broadcast message to all clients in a session
+  broadcastToSession(sessionId, message) {
+    const clientSet = this.clients.get(sessionId);
+    if (clientSet) {
+      const messageStr = JSON.stringify(message);
+      for (const client of clientSet) {
+        try {
+          client.ws.send(messageStr);
+        } catch (error) {
+          console.error('Error broadcasting to client:', error);
+        }
+      }
+    }
+  }
+
+  // Helper method to get connected clients list for a session
+  getSessionClients(sessionId) {
+    const clientSet = this.clients.get(sessionId);
+    if (!clientSet) return [];
+    
+    return Array.from(clientSet).map(client => ({
+      clientId: client.clientId,
+      clientName: client.clientName,
+      joinedAt: client.joinedAt
+    }));
   }
 }
 
