@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Chess Moves</title>
+</head>
+<body>
+    <h1>Chess Moves Test</h1>
+    <div id="output"></div>
+
+    <script type="module">
+        import { Chess } from '/node_modules/chessops/chess.js';
+        import { parseUci } from '/node_modules/chessops/util.js';
+        
+        const output = document.getElementById('output');
+        
+        function log(message) {
+            output.innerHTML += message + '<br>';
+            console.log(message);
+        }
+        
+        function testGame(name, moves) {
+            log(`<h2>Testing ${name}</h2>`);
+            
+            let chess = Chess.default();
+            log(`Starting FEN: ${chess.toSetup().board}`);
+            
+            for (let i = 0; i < moves.length; i++) {
+                const move = moves[i];
+                try {
+                    const parsedMove = parseUci(move.uci);
+                    if (parsedMove && chess.isLegal(parsedMove)) {
+                        chess.play(parsedMove);
+                        log(`✅ Move ${i + 1}: ${move.uci} - Success`);
+                    } else {
+                        log(`❌ Move ${i + 1}: ${move.uci} - Failed (illegal or invalid)`);
+                        log(`   Current position: ${chess.toSetup().board}`);
+                        break;
+                    }
+                } catch (error) {
+                    log(`❌ Move ${i + 1}: ${move.uci} - Error: ${error.message}`);
+                    break;
+                }
+            }
+            
+            log(`Final position: ${chess.toSetup().board}`);
+            log('<hr>');
+        }
+        
+        // Test games
+        const scholarsMate = [
+            { uci: 'e2e4', from: 'e2', to: 'e4' },
+            { uci: 'e7e5', from: 'e7', to: 'e5' },
+            { uci: 'f1c4', from: 'f1', to: 'c4' },
+            { uci: 'b8c6', from: 'b8', to: 'c6' },
+            { uci: 'd1h5', from: 'd1', to: 'h5' },
+            { uci: 'g8f6', from: 'g8', to: 'f6' },
+            { uci: 'h5f7', from: 'h5', to: 'f7' }
+        ];
+        
+        const italianGame = [
+            { uci: 'e2e4', from: 'e2', to: 'e4' },
+            { uci: 'e7e5', from: 'e7', to: 'e5' },
+            { uci: 'g1f3', from: 'g1', to: 'f3' },
+            { uci: 'b8c6', from: 'b8', to: 'c6' },
+            { uci: 'f1c4', from: 'f1', to: 'c4' },
+            { uci: 'f8c5', from: 'f8', to: 'c5' },
+            { uci: 'c2c3', from: 'c2', to: 'c3' },
+            { uci: 'f7f5', from: 'f7', to: 'f5' },
+            { uci: 'd2d3', from: 'd2', to: 'd3' },
+            { uci: 'f5e4', from: 'f5', to: 'e4' },
+            { uci: 'd3e4', from: 'd3', to: 'e4' },
+            { uci: 'g8f6', from: 'g8', to: 'f6' }
+        ];
+        
+        testGame("Scholar's Mate", scholarsMate);
+        testGame("Italian Game", italianGame);
+    </script>
+</body>
+</html> 

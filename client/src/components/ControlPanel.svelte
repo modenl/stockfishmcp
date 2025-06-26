@@ -11,12 +11,9 @@
   export let onLoadSampleGame = () => {};
   export let onFileUpload = () => {};
   export let onResetAI = () => {};
+  export let onShowNewGameModal = () => {};
 
-  let showGameModeModal = false;
-  let selectedMode = 'human_vs_human';
-  let selectedPlayerColor = 'white';
-  let aiEloRating = 1500;
-  let aiTimeLimit = 500; // milliseconds - default to fast play
+
   let showLanguageSettings = false;
   let showReplayMenu = false;
   let fileInput;
@@ -25,13 +22,10 @@
   $: t = languageStore.translations[currentLang];
 
   function handleNewGameClick() {
-    showGameModeModal = true;
+    onShowNewGameModal();
   }
 
-  function startNewGame() {
-    onNewGame(selectedMode, selectedPlayerColor, aiEloRating, aiTimeLimit);
-    showGameModeModal = false;
-  }
+
 
   function getModeDisplayName(mode) {
     switch (mode) {
@@ -257,155 +251,7 @@
   </div>
 </div>
 
-{#if showGameModeModal}
-  <div class="modal-overlay" on:click={() => showGameModeModal = false}>
-    <div class="modal" on:click|stopPropagation>
-      <h3>{t.selectGameMode}</h3>
-      
-      <div class="mode-selection">
-        <label class="mode-option">
-          <input 
-            type="radio" 
-            bind:group={selectedMode} 
-            value="human_vs_human"
-          />
-          <span>{t.humanVsHuman}</span>
-          <small>{t.twoPlayersAlternate}</small>
-        </label>
-        
-        <label class="mode-option">
-          <input 
-            type="radio" 
-            bind:group={selectedMode} 
-            value="human_vs_ai"
-          />
-          <span>{t.humanVsAi}</span>
-          <small>{t.playAgainstAi}</small>
-        </label>
-      </div>
 
-      {#if selectedMode === 'human_vs_ai'}
-        <div class="ai-settings">
-          <div class="color-selection">
-            <h4>{t.selectYourColor}</h4>
-            <label class="color-option">
-              <input 
-                type="radio" 
-                bind:group={selectedPlayerColor} 
-                value="white"
-              />
-              <span>{t.whiteFirst}</span>
-            </label>
-            <label class="color-option">
-              <input 
-                type="radio" 
-                bind:group={selectedPlayerColor} 
-                value="black"
-              />
-              <span>{t.blackSecond}</span>
-            </label>
-          </div>
-
-          <div class="ai-strength">
-            <h4>{t.aiSettings}</h4>
-            
-            <!-- AI Strength Setting -->
-            <div class="setting-item">
-              <label for="elo-range">
-                <strong>{t.aiStrength || 'AI Strength'}</strong>: {aiEloRating} ELO
-              </label>
-              <input 
-                id="elo-range"
-                type="range" 
-                min="800" 
-                max="2800" 
-                step="100"
-                bind:value={aiEloRating}
-                class="slider"
-              />
-              <div class="elo-labels">
-                <span>{t.beginner} (800)</span>
-                <span>{t.master} (2800)</span>
-              </div>
-              <div class="setting-description">
-                {t.strengthDescription || 'Controls how strong the AI plays (chess skill level)'}
-              </div>
-            </div>
-
-            <!-- Thinking Time Setting -->
-            <div class="setting-item">
-              <label for="time-range">
-                <strong>{t.thinkingTime || 'Thinking Time'}</strong>: {aiTimeLimit/1000}{t.seconds}
-              </label>
-              <input 
-                id="time-range"
-                type="range" 
-                min="200" 
-                max="5000" 
-                step="200"
-                bind:value={aiTimeLimit}
-                class="slider"
-              />
-              <div class="time-labels">
-                <span>{t.instant || 'Instant'} (0.2{t.seconds})</span>
-                <span>{t.deepThinking} (5{t.seconds})</span>
-              </div>
-              <div class="quick-presets">
-                <button type="button" class="preset-btn" on:click={() => aiTimeLimit = 200}>
-                  {t.instant || 'Instant'} (0.2s)
-                </button>
-                <button type="button" class="preset-btn" on:click={() => aiTimeLimit = 500}>
-                  {t.fast || 'Fast'} (0.5s)
-                </button>
-                <button type="button" class="preset-btn" on:click={() => aiTimeLimit = 1000}>
-                  {t.normal || 'Normal'} (1s)
-                </button>
-                <button type="button" class="preset-btn" on:click={() => aiTimeLimit = 3000}>
-                  {t.deep || 'Deep'} (3s)
-                </button>
-              </div>
-              <div class="setting-description">
-                {t.timeDescription || 'Controls how long AI thinks per move (response speed)'}
-              </div>
-            </div>
-
-            <!-- Quick Preset Combinations -->
-            <div class="setting-item">
-              <h5>{t.quickPresets || 'Quick Presets'}</h5>
-              <div class="combo-presets">
-                <button type="button" class="combo-btn" on:click={() => {aiEloRating = 1000; aiTimeLimit = 200;}}>
-                  📚 {t.beginner || 'Beginner'}<br/>
-                  <small>1000 ELO • 0.2s</small>
-                </button>
-                <button type="button" class="combo-btn" on:click={() => {aiEloRating = 1500; aiTimeLimit = 500;}}>
-                  🎯 {t.intermediate || 'Intermediate'}<br/>
-                  <small>1500 ELO • 0.5s</small>
-                </button>
-                <button type="button" class="combo-btn" on:click={() => {aiEloRating = 2000; aiTimeLimit = 1000;}}>
-                  🏆 {t.advanced || 'Advanced'}<br/>
-                  <small>2000 ELO • 1s</small>
-                </button>
-                <button type="button" class="combo-btn" on:click={() => {aiEloRating = 2500; aiTimeLimit = 3000;}}>
-                  👑 {t.master || 'Master'}<br/>
-                  <small>2500 ELO • 3s</small>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      {/if}
-
-      <div class="modal-actions">
-        <button class="btn btn-secondary" on:click={() => showGameModeModal = false}>
-          {t.cancel}
-        </button>
-        <button class="btn btn-primary" on:click={startNewGame}>
-          {t.startGame}
-        </button>
-      </div>
-    </div>
-  </div>
-{/if}
 
 <style>
   .control-panel {
@@ -669,160 +515,7 @@
     background: #ff7300;
   }
 
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.8);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
 
-  .modal {
-    background: #2a2a2a;
-    border: 2px solid #444;
-    border-radius: var(--radius-md);
-    padding: var(--spacing-lg);
-    max-width: 400px;
-    width: 90%;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  }
-
-  .modal h3 {
-    margin: 0 0 var(--spacing-md) 0;
-    color: #ffffff;
-    text-align: center;
-    font-weight: 600;
-  }
-
-  .mode-selection {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-md);
-  }
-
-  .mode-option, .color-option {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm);
-    border: 1px solid #555;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    background: #333;
-  }
-
-  .mode-option:hover, .color-option:hover {
-    background: #404040;
-    border-color: #007acc;
-  }
-
-  .mode-option input, .color-option input {
-    margin: 0;
-  }
-
-  .mode-option span, .color-option span {
-    font-weight: 500;
-    color: #ffffff;
-  }
-
-  .mode-option small {
-    display: block;
-    color: #cccccc;
-    font-size: 0.8rem;
-    margin-top: 2px;
-  }
-
-  .color-selection {
-    margin-bottom: var(--spacing-md);
-  }
-
-  .color-selection h4 {
-    margin: 0 0 var(--spacing-sm) 0;
-    color: #ffffff;
-    font-size: 1rem;
-    font-weight: 600;
-  }
-
-  .modal-actions {
-    display: flex;
-    gap: var(--spacing-sm);
-    justify-content: flex-end;
-  }
-
-  .ai-settings {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-  }
-
-  .ai-strength {
-    margin-top: var(--spacing-sm);
-  }
-
-  .ai-strength h4 {
-    margin: 0 0 var(--spacing-sm) 0;
-    color: #ffffff;
-    font-size: 1rem;
-    font-weight: 600;
-  }
-
-  .setting-item {
-    margin-bottom: var(--spacing-md);
-  }
-
-  .setting-item label {
-    display: block;
-    color: #ffffff;
-    font-weight: 500;
-    margin-bottom: var(--spacing-xs);
-  }
-
-  .slider {
-    width: 100%;
-    height: 6px;
-    border-radius: 3px;
-    background: #555;
-    outline: none;
-    -webkit-appearance: none;
-    appearance: none;
-  }
-
-  .slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #007acc;
-    cursor: pointer;
-    border: 2px solid #fff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-  }
-
-  .slider::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #007acc;
-    cursor: pointer;
-    border: 2px solid #fff;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-  }
-
-  .elo-labels, .time-labels {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.8rem;
-    color: #cccccc;
-    margin-top: var(--spacing-xs);
-  }
 
   .replay-menu {
     background: var(--surface-variant);

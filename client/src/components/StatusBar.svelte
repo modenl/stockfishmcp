@@ -13,6 +13,7 @@
   export let sessionId = '...';
   export let clientName = 'Player';
   export let connectedClients = [];
+  export let clientId = '...';
   
   $: currentLang = $languageStore;
   $: t = languageStore.translations[currentLang];
@@ -67,131 +68,225 @@
   }
 </script>
 
-<div class="status-bar" class:connected={connectionStatus === 'connected'} class:disconnected={connectionStatus !== 'connected'}>
-  <div class="status-left">
-    <div class="client-info">
-      <span class="client-name">{clientName}</span>
-      <span class="game-id">ID: {sessionId}</span>
+<div class="status-bar-compact">
+  <div class="status-indicators">
+    <!-- Connection Status -->
+    <div class="status-indicator {getConnectionClass(connectionStatus)}" title="WebSocket Connection">
+      <svelte:component this={getConnectionIcon(connectionStatus)} size="14" />
     </div>
-    <div class="status-item" title="WebSocket Connection">
-      <svelte:component this={statusIcons[connectionStatus]} size="16" />
-      <span class="status-text">
-        {#if connectionStatus === 'connected'}
-          {currentLang === 'zh' ? '服务器已连接' : 'Server Connected'}
-        {:else if connectionStatus === 'reconnecting'}
-          {currentLang === 'zh' ? '重新连接中...' : 'Reconnecting...'}
-        {:else if connectionStatus === 'disconnected'}
-          {currentLang === 'zh' ? '已断开连接' : 'Disconnected'}
-        {:else if connectionStatus === 'error' || connectionStatus === 'failed'}
-          {currentLang === 'zh' ? '连接失败' : 'Connection Failed'}
-        {:else}
-          {connectionStatus}
-        {/if}
-      </span>
+    
+    <!-- Engine Status -->
+    <div class="status-indicator {engineReady ? 'status-connected' : 'status-analyzing'}" title="Chess Engine">
+      <Cpu size="14" />
     </div>
+    
+    <!-- Connected Clients -->
     {#if connectedClients.length > 0}
-      <div class="status-item" title="Connected Clients">
-        <Users size={16} />
-        <span class="status-text">{connectedClients.length} {currentLang === 'zh' ? '个客户端' : 'clients'}</span>
-        <div class="clients-tooltip">
-          {#each connectedClients as client}
-            <div class="client-item">{client.clientName}</div>
-          {/each}
-        </div>
+      <div class="status-indicator status-connected" title="{connectedClients.length} clients connected">
+        <Users size="14" />
+        <span class="status-count">{connectedClients.length}</span>
       </div>
     {/if}
-    <div class="status-item" title="Chess Engine">
-      <Cpu size={16} />
-      <span class="status-text">
-        {#if engineReady}
-          {currentLang === 'zh' ? '引擎就绪' : 'Engine Ready'}
-        {:else if engineStatus === 'loading'}
-          {currentLang === 'zh' ? '加载引擎模块...' : 'Loading Engine Module...'}
-        {:else if engineStatus === 'initializing'}
-          {currentLang === 'zh' ? '初始化引擎...' : 'Initializing Engine...'}
-        {:else if engineStatus === 'starting'}
-          {currentLang === 'zh' ? '启动UCI协议...' : 'Starting UCI Protocol...'}
-        {:else if engineStatus === 'error'}
-          {currentLang === 'zh' ? '引擎加载失败' : 'Engine Load Failed'}
-        {:else}
-          {currentLang === 'zh' ? '引擎加载中...' : 'Engine Loading...'}
-        {/if}
-      </span>
-    </div>
   </div>
 
-  <div class="session-info">
-    {#if session}
-      <div class="session-item">
-        <span class="session-label">{currentLang === 'zh' ? '会话' : 'Session'}:</span>
-        <span class="session-value">{session.id.slice(0, 8)}...</span>
-      </div>
-      
-      <div class="session-item">
-        <span class="session-label">{currentLang === 'zh' ? '模式' : 'Mode'}:</span>
-        <span class="session-value">{session.mode}</span>
-      </div>
-      
-      <div class="session-item">
-        <Clock size={16} />
-        <span class="session-value">{formatSessionTime(session)}</span>
-      </div>
-      
-      <div class="session-item">
-        <span class="session-label">{currentLang === 'zh' ? '状态' : 'Status'}:</span>
-        <span class="session-value {gameStatus === 'playing' ? 'text-success' : gameStatus === 'checkmate' ? 'text-error' : 'text-warning'}">{gameStatus}</span>
-      </div>
-    {:else}
-      <div class="session-item">
-        <span class="session-label">{currentLang === 'zh' ? '轮到' : 'Turn'}:</span>
-        <span class="session-value {inCheck ? 'text-error' : ''}">{currentLang === 'zh' ? (turn === 'white' ? '白方' : '黑方') : (turn === 'white' ? 'White' : 'Black')}{inCheck ? ' (将军!)' : ''}</span>
-      </div>
-      
-      {#if aiThinking}
-        <div class="session-item">
-          <span class="session-value thinking">{currentLang === 'zh' ? 'AI思考中...' : 'AI thinking...'}</span>
-        </div>
+  <div class="game-status">
+    <!-- Current Turn -->
+    <div class="turn-indicator {turn === 'white' ? 'turn-white' : 'turn-black'}" title="Current Turn">
+      <span class="turn-text">{currentLang === 'zh' ? (turn === 'white' ? '白' : '黑') : (turn === 'white' ? 'W' : 'B')}</span>
+      {#if inCheck}
+        <AlertTriangle size="12" class="check-icon" />
       {/if}
-      
-      <div class="session-item">
-        <span class="session-label">{currentLang === 'zh' ? '状态' : 'Status'}:</span>
-        <span class="session-value {gameStatus === 'playing' ? 'text-success' : gameStatus === 'checkmate' ? 'text-error' : 'text-warning'}">
-          {#if gameStatus === 'checkmate'}
-            {currentLang === 'zh' ? '将死' : 'Checkmate'}
-          {:else if gameStatus === 'stalemate'}
-            {currentLang === 'zh' ? '逼和' : 'Stalemate'}
-          {:else if gameStatus === 'draw'}
-            {currentLang === 'zh' ? '和局' : 'Draw'}
-          {:else}
-            {currentLang === 'zh' ? '进行中' : 'Playing'}
-          {/if}
-        </span>
+    </div>
+    
+    <!-- Game Status -->
+    <div class="game-state {gameStatus === 'playing' ? 'state-playing' : gameStatus === 'checkmate' ? 'state-checkmate' : 'state-draw'}">
+      {#if gameStatus === 'checkmate'}
+        {currentLang === 'zh' ? '将死' : 'Mate'}
+      {:else if gameStatus === 'stalemate'}
+        {currentLang === 'zh' ? '逼和' : 'Stale'}
+      {:else if gameStatus === 'draw'}
+        {currentLang === 'zh' ? '和局' : 'Draw'}
+      {:else}
+        {currentLang === 'zh' ? '进行中' : 'Playing'}
+      {/if}
+    </div>
+    
+    <!-- AI Thinking -->
+    {#if aiThinking}
+      <div class="ai-thinking">
+        <div class="thinking-spinner"></div>
+        <span class="thinking-text">{currentLang === 'zh' ? 'AI' : 'AI'}</span>
       </div>
     {/if}
+  </div>
+
+  <div class="client-info-compact">
+    <div class="client-name-compact" title="{clientName} ({clientId.slice(-8)})">{clientName}</div>
   </div>
 </div>
 
 <style>
-  .status-bar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--spacing-md);
-    background-color: var(--bg-secondary);
-    border-bottom: 1px solid var(--border);
-    font-size: var(--text-sm);
-  }
-
-  .status-left, .status-right {
+  .status-bar-compact {
     display: flex;
     align-items: center;
     gap: 1rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
   }
 
-  .client-info {
+  .status-indicators {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: 4px;
+  }
+
+  .status-connected {
+    color: var(--success);
+  }
+
+  .status-disconnected {
+    color: var(--error);
+  }
+
+  .status-analyzing {
+    color: var(--warning);
+  }
+
+  .status-count {
+    font-size: 0.625rem;
+    font-weight: 600;
+  }
+
+  .game-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .turn-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 0.75rem;
+  }
+
+  .turn-white {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+  }
+
+  .turn-black {
+    background: rgba(0, 0, 0, 0.3);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .check-icon {
+    color: var(--error);
+  }
+
+  .game-state {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 500;
+    font-size: 0.75rem;
+  }
+
+  .state-playing {
+    color: var(--success);
+  }
+
+  .state-checkmate {
+    color: var(--error);
+    background: rgba(239, 68, 68, 0.1);
+  }
+
+  .state-draw {
+    color: var(--warning);
+  }
+
+  .ai-thinking {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--accent-primary);
+  }
+
+  .thinking-spinner {
+    width: 12px;
+    height: 12px;
+    border: 1px solid transparent;
+    border-top: 1px solid currentColor;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+
+  .thinking-text {
+    font-size: 0.625rem;
+    font-weight: 600;
+  }
+
+  .client-info-compact {
+    display: flex;
+    align-items: center;
+  }
+
+  .client-name-compact {
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 0.875rem;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* Mobile responsive */
+  @media (max-width: 768px) {
+    .status-bar-compact {
+      gap: 0.5rem;
+      font-size: 0.625rem;
+    }
+
+    .status-indicators {
+      gap: 0.25rem;
+    }
+
+    .game-status {
+      gap: 0.25rem;
+    }
+
+    .turn-indicator {
+      padding: 0.125rem 0.375rem;
+    }
+
+    .client-name-compact {
+      font-size: 0.75rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .status-bar-compact {
+      flex-wrap: wrap;
+      gap: 0.25rem;
+    }
+
+    .client-info-compact {
+      order: -1;
+      width: 100%;
+    }
   }
 
   .client-name {
@@ -200,13 +295,16 @@
     font-size: 0.95em;
   }
 
-  .game-id {
+  .client-id {
+    font-size: 0.8em;
+    color: var(--text-secondary);
     font-family: monospace;
-    font-size: 0.9em;
-    padding: 2px 6px;
-    background-color: #2a2d31;
-    border-radius: 4px;
-    color: #99aab5;
+  }
+
+  .session-id {
+    font-size: 0.8em;
+    color: var(--text-muted);
+    font-family: monospace;
   }
 
   .status-item {
