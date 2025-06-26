@@ -348,6 +348,13 @@ export class MCPServer {
     });
   }
 
+  // Add the missing listTools method
+  async listTools() {
+    return {
+      tools: this.tools
+    };
+  }
+
   async callTool(name, arguments_) {
     switch (name) {
       case 'analyze_position':

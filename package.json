@@ -21,7 +21,7 @@
     "postinstall": "npm run client:install"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.13.0",
+    "@modelcontextprotocol/sdk": "^1.13.2",
     "ajv": "^8.12.0",
     "chess-trainer-mcp": "^1.0.5",
     "chess.js": "^1.4.0",
