@@ -32,12 +32,13 @@ function createWebSocketStore() {
       socket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
+          console.log('📨 WebSocket message:', message.type || 'unknown');
           update(state => ({
             ...state,
             lastMessage: message
           }));
         } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
+          console.error('Failed to parse WebSocket message:', error, 'Raw data:', event.data);
         }
       };
 
@@ -73,11 +74,9 @@ function createWebSocketStore() {
       };
 
       socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        update(state => ({
-          ...state,
-          connectionStatus: 'error'
-        }));
+        console.error('❌ WebSocket error:', error);
+        // Don't update state to 'error' immediately, let onclose handle reconnection
+        console.log('WebSocket error occurred, waiting for onclose to handle reconnection');
       };
 
     } catch (error) {
@@ -107,13 +106,18 @@ function createWebSocketStore() {
     update(state => {
       if (state.socket && state.isConnected) {
         try {
-          state.socket.send(JSON.stringify(message));
-          console.log('Sent WebSocket message:', message);
+          const messageStr = JSON.stringify(message);
+          state.socket.send(messageStr);
+          console.log('📤 Sent WebSocket message:', message.type, message);
         } catch (error) {
-          console.error('Failed to send WebSocket message:', error);
+          console.error('❌ Failed to send WebSocket message:', error, 'Message:', message);
         }
       } else {
-        console.warn('Cannot send message: WebSocket not connected');
+        console.warn('⚠️ Cannot send message: WebSocket not connected. State:', {
+          hasSocket: !!state.socket,
+          isConnected: state.isConnected,
+          connectionStatus: state.connectionStatus
+        });
       }
       return state;
     });

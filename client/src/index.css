@@ -19,9 +19,6 @@
   --border: #404040;
   
   /* Chess colors */
-  --eval-positive: #10b981;
-  --eval-negative: #ef4444;
-  --eval-neutral: #6b7280;
   
   /* Spacing */
   --spacing-xs: 0.25rem;
@@ -45,6 +42,9 @@
   --text-xl: 1.25rem;
   --text-2xl: 1.5rem;
   --text-3xl: 1.875rem;
+  
+  /* Dynamic viewport height */
+  --vh: 1vh;
 }
 
 * {
@@ -173,11 +173,18 @@ body {
   cursor: pointer;
   transition: all 0.2s ease;
   user-select: none;
+  min-height: 44px; /* Touch target size */
+  min-width: 44px;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.btn:active {
+  transform: scale(0.98);
 }
 
 .btn-primary {
@@ -311,25 +318,7 @@ body {
   background: radial-gradient(rgba(20, 85, 30, 0.5) 22%, #208530 25%, rgba(20, 85, 30, 0.3) 26%, transparent 50%);
 }
 
-/* Evaluation bar */
-.eval-bar {
-  width: 20px;
-  height: 100%;
-  background: linear-gradient(to top, var(--eval-negative) 0%, var(--eval-negative) 50%, var(--eval-positive) 50%, var(--eval-positive) 100%);
-  position: relative;
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-}
 
-.eval-indicator {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: white;
-  border: 1px solid #000;
-  transition: top 0.3s ease;
-}
 
 /* Move list */
 .move-list {

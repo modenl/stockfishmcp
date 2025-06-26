@@ -8,9 +8,11 @@ const messageSchemas = {
     type: 'object',
     properties: {
       type: { type: 'string', const: 'join_session' },
-      sessionId: { type: 'string', minLength: 1, maxLength: 50 }
+      sessionId: { type: 'string', minLength: 1, maxLength: 50 },
+      clientId: { type: 'string', minLength: 1, maxLength: 100 },
+      clientName: { type: 'string', minLength: 1, maxLength: 50 }
     },
-    required: ['type', 'sessionId'],
+    required: ['type', 'sessionId', 'clientId', 'clientName'],
     additionalProperties: false
   },
 
@@ -88,6 +90,8 @@ const messageSchemas = {
     properties: {
       type: { type: 'string', const: 'sync_move' },
       sessionId: { type: 'string', minLength: 1, maxLength: 50 },
+      clientId: { type: 'string', minLength: 1, maxLength: 100 },
+      clientName: { type: 'string', minLength: 1, maxLength: 50 },
       move: {
         type: 'object',
         properties: {
@@ -100,7 +104,7 @@ const messageSchemas = {
       fen: { type: 'string', minLength: 10, maxLength: 100 },
       turn: { type: 'string', enum: ['white', 'black'] }
     },
-    required: ['type', 'sessionId', 'move', 'fen', 'turn'],
+    required: ['type', 'sessionId', 'clientId', 'clientName', 'move', 'fen', 'turn'],
     additionalProperties: false
   },
 

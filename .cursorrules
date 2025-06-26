@@ -1,0 +1,25 @@
+# Cursor Rules for Chess Trainer MCP Project
+
+## Development Guidelines
+
+### Application Startup
+- DO NOT automatically start the application (client/server)
+- The user has already started both client and server manually
+- Avoid running `npm start`, `npm run dev`, or similar startup commands
+- Focus on code changes and file modifications only
+
+### Code Style
+- Use modern JavaScript/TypeScript features
+- Follow Svelte best practices
+- Maintain responsive design principles
+- Keep accessibility in mind
+
+### Testing
+- Test changes manually after implementation
+- Verify responsive behavior across devices
+- Ensure WebSocket connections work properly
+
+### File Organization
+- Keep components organized in appropriate directories
+- Maintain clean separation between client and server code
+- Update documentation when making significant changes 

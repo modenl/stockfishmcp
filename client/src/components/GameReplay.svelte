@@ -32,11 +32,16 @@
 
   onMount(async () => {
     try {
+      console.log('🎬 GameReplay: Starting initialization...');
+      console.log('📊 GameReplay: gameData received:', gameData);
+      
       const { Chessground } = await import('chessground');
+      console.log('✅ GameReplay: Chessground imported successfully');
       
       const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
       const setup = parseFen(startingFen).unwrap();
       chess = Chess.fromSetup(setup).unwrap();
+      console.log('✅ GameReplay: Chess engine initialized');
       
       if (gameData && gameData.moves) {
         moves = gameData.moves;
@@ -45,7 +50,11 @@
         
         // 使用 chessops 重放所有移动，无需胶水代码
         const tempChess = Chess.fromSetup(setup).unwrap();
-        for (let move of moves) {
+        console.log('GameReplay: Starting replay with', moves.length, 'moves');
+        console.log('GameReplay: Initial FEN:', makeFen(tempChess.toSetup()));
+        
+        for (let i = 0; i < moves.length; i++) {
+          const move = moves[i];
           try {
             let parsedMove;
             
@@ -59,11 +68,20 @@
               parsedMove = parseSan(tempChess, move.san);
             }
             
+            console.log(`GameReplay: Processing move ${i + 1}/${moves.length}:`, move);
+            
             if (parsedMove && tempChess.isLegal(parsedMove)) {
               tempChess.play(parsedMove);
-              positions.push(makeFen(tempChess.toSetup()));
+              const newFen = makeFen(tempChess.toSetup());
+              positions.push(newFen);
+              console.log(`  ✅ Move ${i + 1} applied successfully. New FEN:`, newFen);
             } else {
-              console.warn('Could not parse move:', move);
+              console.warn(`❌ Could not parse/apply move ${i + 1}:`, move);
+              console.warn('  - parsedMove:', parsedMove);
+              console.warn('  - current FEN:', makeFen(tempChess.toSetup()));
+              console.warn('  - isLegal:', parsedMove ? tempChess.isLegal(parsedMove) : 'N/A (parsedMove is null)');
+              
+              // Skip this move and continue with current position
               positions.push(makeFen(tempChess.toSetup()));
             }
           } catch (error) {
@@ -505,7 +523,7 @@
     background: rgba(0, 0, 0, 0.9);
     display: flex;
     flex-direction: column;
-    z-index: 1000;
+    z-index: 999999;
     color: white;
   }
 

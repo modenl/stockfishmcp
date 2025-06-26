@@ -386,10 +386,11 @@ class ChessTrainerServer {
 
     this.app.post('/api/mcp/reset_game', (req, res) => {
       try {
-        const { game_id } = req.body;
+        const { game_id, gameSettings } = req.body;
         
         console.log('\n=== 🔄 RESET_GAME REQUEST ===');
         console.log('🎮 Game ID:', game_id);
+        console.log('⚙️ Game Settings:', gameSettings);
         console.log('⏰ Timestamp:', new Date().toISOString());
         
         // 记录重置前的状态
@@ -399,6 +400,7 @@ class ChessTrainerServer {
           console.log('   📍 FEN:', oldGameState.fen);
           console.log('   🎲 Turn:', oldGameState.turn);
           console.log('   ♟️  Move count:', oldGameState.moves ? oldGameState.moves.length : 0);
+          console.log('   🎯 Game mode:', oldGameState.gameMode);
           if (oldGameState.moves && oldGameState.moves.length > 0) {
             console.log('   📝 Move history:', oldGameState.moves.map(m => m.san || m.move).join(' '));
           }
@@ -406,7 +408,7 @@ class ChessTrainerServer {
           console.log('📊 No existing game state found, creating new game');
         }
         
-        // 重置游戏状态
+        // 重置游戏状态，保留客户端传来的设置
         const gameState = {
           gameId: game_id,
           active: true,
@@ -416,11 +418,11 @@ class ChessTrainerServer {
           fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
           turn: 'white',
           lastUpdated: new Date().toISOString(),
-          // Initialize with default game mode information
-          gameMode: 'human_vs_human',
-          playerColor: 'white',
-          aiEloRating: 1500,
-          aiTimeLimit: 500
+          // Use client-provided settings or fallback to defaults
+          gameMode: gameSettings?.mode || 'human_vs_human',
+          playerColor: gameSettings?.playerColor || 'white',
+          aiEloRating: gameSettings?.aiEloRating || 1500,
+          aiTimeLimit: gameSettings?.aiTimeLimit || 500
         };
 
         gameStateManager.saveGameState(game_id, gameState);
@@ -438,7 +440,13 @@ class ChessTrainerServer {
           type: 'mcp_game_reset',
           gameId: game_id,
           fen: gameState.fen,
-          turn: gameState.turn
+          turn: gameState.turn,
+          gameSettings: {
+            mode: gameState.gameMode,
+            playerColor: gameState.playerColor,
+            aiEloRating: gameState.aiEloRating,
+            aiTimeLimit: gameState.aiTimeLimit
+          }
         };
 
         console.log('📡 Broadcasting reset to all clients in session:', resetMessage);
@@ -849,14 +857,17 @@ class ChessTrainerServer {
     
     console.log(`✅ Move synced to server: ${move.san} (${move.uci}), total moves: ${gameState.moves.length}`);
     
-    // Send confirmation back to client
-    ws.send(JSON.stringify({
-      type: 'move_synced',
+    // Broadcast the move to ALL clients in the session (including the sender)
+    console.log(`📡 Broadcasting move to all clients in session ${sessionId}`);
+    this.broadcastToSession(sessionId, {
+      type: 'mcp_move',
       sessionId,
-      move: moveRecord,
+      move: move.san,
+      uci: move.uci,
       fen,
-      turn
-    }));
+      turn,
+      moveRecord
+    }); // All clients should receive the same message for consistency
   }
 
   async handleResetGame(ws, message) {
@@ -974,18 +985,42 @@ class ChessTrainerServer {
   }
 
   // Helper method to broadcast message to all clients in a session
-  broadcastToSession(sessionId, message) {
+  broadcastToSession(sessionId, message, excludeWs = null) {
+    console.log(`🔍 DEBUG: Attempting to broadcast to session ${sessionId}`);
     const clientSet = this.clients.get(sessionId);
-    if (clientSet) {
-      const messageStr = JSON.stringify(message);
-      for (const client of clientSet) {
-        try {
-          client.ws.send(messageStr);
-        } catch (error) {
-          console.error('Error broadcasting to client:', error);
-        }
+    
+    if (!clientSet) {
+      console.log(`❌ No client set found for session ${sessionId}`);
+      return;
+    }
+    
+    console.log(`📊 Found ${clientSet.size} total clients in session ${sessionId}`);
+    
+    const messageStr = JSON.stringify(message);
+    let broadcastCount = 0;
+    let excludedCount = 0;
+    
+    for (const client of clientSet) {
+      console.log(`🔍 Checking client: ${client.clientName} (${client.clientId})`);
+      
+      // Skip the excluded WebSocket connection (usually the sender)
+      if (excludeWs && client.ws === excludeWs) {
+        console.log(`⏭️  Skipping sender: ${client.clientName}`);
+        excludedCount++;
+        continue;
+      }
+      
+      try {
+        console.log(`📤 Sending message to: ${client.clientName} (${client.clientId})`);
+        client.ws.send(messageStr);
+        broadcastCount++;
+        console.log(`✅ Successfully sent to: ${client.clientName}`);
+      } catch (error) {
+        console.error(`❌ Error broadcasting to client ${client.clientName}:`, error);
       }
     }
+    
+    console.log(`📡 Broadcast summary for session ${sessionId}: sent to ${broadcastCount} clients, excluded ${excludedCount} clients`);
   }
 
   // Helper method to get connected clients list for a session

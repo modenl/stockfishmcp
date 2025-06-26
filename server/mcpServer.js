@@ -269,6 +269,65 @@ export class MCPServer {
           },
           required: ['game_id']
         }
+      },
+      {
+        name: 'create_game_with_settings',
+        description: 'Create a new chess game with specific settings (mode, AI ELO, etc.)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            game_id: {
+              type: 'string',
+              description: 'ID for the new game'
+            },
+            mode: {
+              type: 'string',
+              enum: ['human_vs_human', 'human_vs_ai'],
+              description: 'Game mode: human vs human or human vs AI',
+              default: 'human_vs_ai'
+            },
+            player_color: {
+              type: 'string',
+              enum: ['white', 'black'],
+              description: 'Player color when playing against AI',
+              default: 'white'
+            },
+            ai_elo: {
+              type: 'number',
+              minimum: 800,
+              maximum: 2800,
+              description: 'AI strength in ELO rating (800-2800)',
+              default: 1500
+            },
+            ai_time_limit: {
+              type: 'number',
+              minimum: 200,
+              maximum: 5000,
+              description: 'AI thinking time in milliseconds',
+              default: 1000
+            }
+          },
+          required: ['game_id']
+        }
+      },
+      {
+        name: 'launch_chess_trainer',
+        description: 'Launch the complete Chess Trainer web application with UI',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            port: {
+              type: 'number',
+              description: 'Port to run the web server on',
+              default: 3456
+            },
+            auto_open_browser: {
+              type: 'boolean',
+              description: 'Automatically open browser after starting',
+              default: true
+            }
+          }
+        }
       }
     ];
   }
@@ -321,6 +380,10 @@ export class MCPServer {
         return await this.proxyToWebServer('suggest_move', arguments_);
       case 'reset_game':
         return await this.proxyToWebServer('reset_game', arguments_);
+      case 'create_game_with_settings':
+        return await this.createGameWithSettings(arguments_);
+      case 'launch_chess_trainer':
+        return await this.launchChessTrainer(arguments_);
       
       default:
         throw new Error(`Unknown tool: ${name}`);
@@ -683,6 +746,148 @@ export class MCPServer {
 
     const firstMove = moves[0];
     return commonOpenings[firstMove] || 'This opening focuses on piece development and central control.';
+  }
+
+  async createGameWithSettings(args) {
+    try {
+      const {
+        game_id,
+        mode = 'human_vs_ai',
+        player_color = 'white',
+        ai_elo = 1500,
+        ai_time_limit = 1000
+      } = args;
+
+      // Create game with settings via API
+      const response = await fetch(`http://localhost:3456/api/mcp/reset_game`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          game_id: game_id,
+          gameSettings: {
+            mode: mode,
+            playerColor: player_color,
+            aiEloRating: ai_elo,
+            aiTimeLimit: ai_time_limit
+          }
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Web server responded with status ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      return {
+        content: [{
+          type: 'text',
+          text: `🎮 Chess Game Created Successfully!\n\n` +
+                `🆔 Game ID: ${game_id}\n` +
+                `🎯 Mode: ${mode === 'human_vs_ai' ? 'Human vs AI' : 'Human vs Human'}\n` +
+                `🎨 Your Color: ${player_color === 'white' ? 'White (first move)' : 'Black (second move)'}\n` +
+                `🤖 AI Strength: ${ai_elo} ELO\n` +
+                `⏱️ AI Think Time: ${ai_time_limit/1000} seconds\n\n` +
+                `🌐 Play at: http://localhost:3456\n` +
+                `💡 Use 'make_move ${game_id} <move>' to make moves\n` +
+                `💡 Use 'get_game_state ${game_id}' to check status`
+        }]
+      };
+    } catch (error) {
+      if (error.code === 'ECONNREFUSED') {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Connection Failed\n\n` +
+                  `🔌 Cannot connect to Chess Trainer web server\n` +
+                  `💡 Please start the web server first with: launch_chess_trainer\n\n` +
+                  `🔧 Error: ${error.message}`
+          }]
+        };
+      }
+      
+      throw new Error(`Failed to create game: ${error.message}`);
+    }
+  }
+
+  async launchChessTrainer(args = {}) {
+    try {
+      const { port = 3456, auto_open_browser = true } = args;
+
+      // Check if server is already running
+      try {
+        const testResponse = await fetch(`http://localhost:${port}/api/health`);
+        if (testResponse.ok) {
+          return {
+            content: [{
+              type: 'text',
+              text: `✅ Chess Trainer Already Running!\n\n` +
+                    `🌐 Access at: http://localhost:${port}\n` +
+                    `💡 Ready to create games and play chess!\n\n` +
+                    `🎮 Next steps:\n` +
+                    `1. Use 'create_game_with_settings' to set up a new game\n` +
+                    `2. Use 'make_move' to play\n` +
+                    `3. Open browser to see the visual interface`
+            }]
+          };
+        }
+      } catch (e) {
+        // Server not running, continue to start it
+      }
+
+      // Start the Chess Trainer server
+      const { spawn } = await import('child_process');
+      const path = await import('path');
+      const serverPath = path.join(process.cwd(), 'server', 'index.js');
+      
+      const serverProcess = spawn('node', [serverPath], {
+        cwd: process.cwd(),
+        detached: true,
+        stdio: 'ignore'
+      });
+
+      // Give server time to start
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Verify server started
+      try {
+        const healthCheck = await fetch(`http://localhost:${port}/api/health`);
+        if (!healthCheck.ok) {
+          throw new Error('Server health check failed');
+        }
+      } catch (e) {
+        throw new Error('Failed to verify server startup');
+      }
+
+      // Open browser if requested
+      if (auto_open_browser) {
+        try {
+          const open = (await import('open')).default;
+          await open(`http://localhost:${port}`);
+        } catch (e) {
+          // Browser opening failed, but server is running
+        }
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: `🚀 Chess Trainer Launched Successfully!\n\n` +
+                `🌐 Web Interface: http://localhost:${port}\n` +
+                `🖥️ Server Status: Running\n` +
+                `${auto_open_browser ? '🌐 Browser opened automatically' : '💡 Open browser manually to access UI'}\n\n` +
+                `🎮 Ready to play! Next steps:\n` +
+                `1. Use 'create_game_with_settings' to set up a game\n` +
+                `2. Set your preferred AI ELO (800-2800)\n` +
+                `3. Choose your color and start playing!\n\n` +
+                `💡 Example: create_game_with_settings game_id="my_game" ai_elo=1800`
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to launch Chess Trainer: ${error.message}`);
+    }
   }
 
   async run() {
