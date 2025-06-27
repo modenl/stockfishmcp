@@ -2,25 +2,37 @@
   "test_game_123": {
     "gameId": "test_game_123",
     "active": true,
-    "startTime": "2025-06-27T18:44:17.111Z",
+    "startTime": "2025-06-27T18:52:04.108Z",
     "mode": "play",
     "moves": [
       {
         "san": "e4",
         "uci": "e2e4",
         "ply": 1,
-        "timestamp": "2025-06-27T18:44:18.593Z"
+        "timestamp": "2025-06-27T18:52:15.322Z"
       },
       {
-        "san": "e5",
-        "uci": "e7e5",
+        "san": "d5",
+        "uci": "d7d5",
         "ply": 2,
-        "timestamp": "2025-06-27T18:44:19.604Z"
+        "timestamp": "2025-06-27T18:52:16.335Z"
+      },
+      {
+        "san": "exd5",
+        "uci": "e4d5",
+        "ply": 3,
+        "timestamp": "2025-06-27T19:00:07.797Z"
+      },
+      {
+        "san": "e6",
+        "uci": "e7e6",
+        "ply": 4,
+        "timestamp": "2025-06-27T19:00:08.811Z"
       }
     ],
-    "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
+    "fen": "rnbqkbnr/ppp2ppp/4p3/3P4/8/8/PPPP1PPP/RNBQKBNR w KQkq - 0 3",
     "turn": "white",
-    "lastUpdated": "2025-06-27T18:44:19.604Z",
+    "lastUpdated": "2025-06-27T19:00:08.812Z",
     "gameMode": "human_vs_ai",
     "playerColor": "white",
     "aiEloRating": 1500,

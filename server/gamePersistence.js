@@ -3,6 +3,8 @@
  * Handles auto-save and cleanup of game states
  */
 
+import { gameStateManager } from './gameStateManager.js';
+
 export class GamePersistence {
   constructor(server) {
     this.server = server;
@@ -49,7 +51,6 @@ export class GamePersistence {
    * Save all active games to persistent storage
    */
   saveAllGames() {
-    const { gameStateManager } = require('./gameStateManager.js');
     let savedCount = 0;
     
     for (const [gameId, gameState] of this.server.gameStates) {
@@ -68,7 +69,6 @@ export class GamePersistence {
    * Mark games as inactive if no moves in last 24 hours
    */
   cleanupInactiveGames() {
-    const { gameStateManager } = require('./gameStateManager.js');
     const inactivityThreshold = 24 * 60 * 60 * 1000; // 24 hours
     const now = Date.now();
     let cleanedCount = 0;
