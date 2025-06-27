@@ -2,103 +2,28 @@
   "test_game_123": {
     "gameId": "test_game_123",
     "active": true,
-    "startTime": "2025-06-25T02:13:42.167Z",
+    "startTime": "2025-06-27T08:23:04.110Z",
     "mode": "play",
     "moves": [
       {
         "san": "e4",
         "uci": "e2e4",
         "ply": 1,
-        "timestamp": "2025-06-25T02:13:43.704Z"
+        "timestamp": "2025-06-27T08:23:05.714Z"
       },
       {
-        "san": "c5",
-        "uci": "c7c5",
+        "san": "d5",
+        "uci": "d7d5",
         "ply": 2,
-        "timestamp": "2025-06-25T02:13:47.282Z"
-      },
-      {
-        "san": "c4",
-        "uci": "c2c4",
-        "ply": 3,
-        "timestamp": "2025-06-25T02:14:00.621Z"
-      },
-      {
-        "san": "e6",
-        "uci": "e7e6",
-        "ply": 4,
-        "timestamp": "2025-06-25T02:14:01.648Z"
-      },
-      {
-        "san": "Nf3",
-        "uci": "g1f3",
-        "ply": 5,
-        "timestamp": "2025-06-25T02:14:05.189Z"
-      },
-      {
-        "san": "d6",
-        "uci": "d7d6",
-        "ply": 6,
-        "timestamp": "2025-06-25T02:14:06.264Z"
+        "timestamp": "2025-06-27T08:23:06.725Z"
       }
     ],
-    "fen": "rnbqkbnr/pp3ppp/3pp3/2p5/2P1P3/5N2/PP1P1PPP/RNBQKB1R w KQkq - 0 4",
+    "fen": "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
     "turn": "white",
-    "lastUpdated": "2025-06-25T02:14:06.264Z",
+    "lastUpdated": "2025-06-27T08:23:06.725Z",
     "gameMode": "human_vs_ai",
     "playerColor": "white",
-    "aiEloRating": 2800,
+    "aiEloRating": 1500,
     "aiTimeLimit": 500
-  },
-  "user_vs_ai_1800": {
-    "gameId": "user_vs_ai_1800",
-    "active": true,
-    "startTime": "2025-06-24T02:39:51.168Z",
-    "mode": "play",
-    "moves": [
-      {
-        "san": "e4",
-        "uci": "e2e4",
-        "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
-        "ply": 1,
-        "timestamp": "2025-06-24T02:40:08.949Z"
-      },
-      {
-        "san": "e5",
-        "uci": "e7e5",
-        "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
-        "ply": 2,
-        "timestamp": "2025-06-24T02:40:26.619Z"
-      }
-    ],
-    "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
-    "turn": "white",
-    "lastUpdated": "2025-06-24T02:40:26.619Z",
-    "gameMode": "human_vs_ai",
-    "playerColor": "white",
-    "aiEloRating": 1800,
-    "aiTimeLimit": 1000
-  },
-  "demo_vs_ai_1800": {
-    "gameId": "demo_vs_ai_1800",
-    "active": true,
-    "startTime": "2025-06-24T02:53:46.720Z",
-    "mode": "play",
-    "moves": [
-      {
-        "san": "e4",
-        "uci": "e2e4",
-        "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
-        "ply": 1,
-        "timestamp": "2025-06-24T02:53:46.733Z"
-      }
-    ],
-    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
-    "turn": "black",
-    "lastUpdated": "2025-06-24T02:53:46.733Z",
-    "gameMode": "human_vs_ai",
-    "playerColor": "white",
-    "aiEloRating": 1800,
-    "aiTimeLimit": 1000
   }
 }

@@ -9,6 +9,7 @@ import { SessionManager } from './sessionManager.js';
 import { MCPClient } from './mcpClient.js';
 import { validateMessage } from './validation.js';
 import { gameStateManager } from './gameStateManager.js';
+import { GamePersistence } from './gamePersistence.js';
 import { Chess } from 'chessops/chess.js';
 import { makeFen, parseFen } from 'chessops/fen.js';
 import { makeSan, parseSan } from 'chessops/san.js';
@@ -28,12 +29,33 @@ class ChessTrainerServer {
     this.clientInfo = new Map(); // clientId -> client info
     this.gameStates = new Map(); // gameId -> game state
     
+    // Initialize game persistence
+    this.gamePersistence = new GamePersistence(this);
+    
     // Increase max listeners to prevent warning
     this.server.setMaxListeners(20);
+    
+    // Load persisted game states
+    this.loadPersistedGames();
     
     this.setupMiddleware();
     this.setupRoutes();
     this.setupWebSocket();
+  }
+
+  loadPersistedGames() {
+    try {
+      const activeGames = gameStateManager.getAllActiveGames();
+      console.log(`Loading ${activeGames.length} persisted games...`);
+      
+      activeGames.forEach(game => {
+        const { gameId, ...gameState } = game;
+        this.gameStates.set(gameId, gameState);
+        console.log(`Loaded game: ${gameId} (${gameState.moves.length} moves)`);
+      });
+    } catch (error) {
+      console.error('Failed to load persisted games:', error);
+    }
   }
 
   setupMiddleware() {
@@ -85,6 +107,17 @@ class ChessTrainerServer {
     // API Routes
     this.app.get('/api/health', (req, res) => {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    });
+
+    // Persistence stats endpoint
+    this.app.get('/api/persistence-stats', (req, res) => {
+      const stats = this.gamePersistence.getStats();
+      res.json({
+        ...stats,
+        persistenceEnabled: true,
+        autoSaveInterval: '30 seconds',
+        cleanupInterval: '1 hour'
+      });
     });
 
     this.app.get('/api/sessions/:id', (req, res) => {
@@ -468,6 +501,398 @@ class ChessTrainerServer {
         console.error('❌ Reset game error:', error);
         res.status(500).json({ error: error.message });
       }
+    });
+
+    // Embed route for iframe integration
+    this.app.get('/embed', (req, res) => {
+      const { 
+        game_id, 
+        mode = 'minimal', 
+        width = 600, 
+        height = 600,
+        allow_moves = 'true',
+        show_controls = 'false'
+      } = req.query;
+
+      // Generate the embedded HTML page
+      const embedHtml = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chess Trainer - Embedded</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #chess-container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #f5f5f5;
+    }
+    #board-wrapper {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+    }
+    #chessboard {
+      width: 100%;
+      height: 100%;
+      max-width: ${parseInt(width)}px;
+      max-height: ${parseInt(height)}px;
+    }
+    .controls {
+      background: #fff;
+      border-top: 1px solid #ddd;
+      padding: 8px;
+      display: ${show_controls === 'true' ? 'flex' : 'none'};
+      gap: 8px;
+      justify-content: center;
+    }
+    .control-btn {
+      padding: 6px 12px;
+      border: 1px solid #ddd;
+      background: #fff;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .control-btn:hover {
+      background: #f0f0f0;
+    }
+    .status-bar {
+      background: #333;
+      color: #fff;
+      padding: 4px 8px;
+      font-size: 14px;
+      text-align: center;
+      display: ${mode === 'minimal' ? 'none' : 'block'};
+    }
+    .error-message {
+      color: #d32f2f;
+      text-align: center;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="chess-container">
+    <div class="status-bar" id="status">
+      <span id="turn-indicator">Loading...</span>
+    </div>
+    <div id="board-wrapper">
+      <div id="chessboard"></div>
+    </div>
+    <div class="controls" id="controls">
+      <button class="control-btn" onclick="resetGame()">New Game</button>
+      <button class="control-btn" onclick="flipBoard()">Flip Board</button>
+      <button class="control-btn" onclick="getHint()">Get Hint</button>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import necessary chess libraries
+    import { Chessground } from '/chessground/chessground.js';
+    import { Chess } from '/chess.js/chess.js';
+    
+    // Configuration from query params
+    const config = {
+      gameId: '${game_id}',
+      mode: '${mode}',
+      allowMoves: ${allow_moves === 'true'},
+      showControls: ${show_controls === 'true'}
+    };
+
+    let board = null;
+    let chess = new Chess();
+    let ws = null;
+    let orientation = 'white';
+
+    // Initialize WebSocket connection
+    function initWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(\`\${protocol}//\${window.location.host}/ws\`);
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        // Join the game session
+        ws.send(JSON.stringify({
+          type: 'join_session',
+          sessionId: config.gameId,
+          clientId: 'embed_' + Math.random().toString(36).substr(2, 9),
+          clientName: 'Embedded Viewer'
+        }));
+      };
+
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        handleWebSocketMessage(message);
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        updateStatus('Connection error');
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        updateStatus('Disconnected - Reconnecting...');
+        // Try to reconnect after 2 seconds
+        setTimeout(initWebSocket, 2000);
+      };
+    }
+
+    // Handle WebSocket messages
+    function handleWebSocketMessage(message) {
+      switch (message.type) {
+        case 'session_state':
+          // Initialize board with current game state
+          if (message.gameState) {
+            loadGameState(message.gameState);
+          }
+          break;
+
+        case 'move':
+        case 'mcp_move':
+          // Update board with new move
+          if (message.move) {
+            makeMove(message.move, message.san);
+          }
+          break;
+
+        case 'game_reset':
+        case 'mcp_game_reset':
+          // Reset the board
+          resetBoard();
+          break;
+
+        case 'game_state_update':
+          // Update game state
+          if (message.gameState) {
+            loadGameState(message.gameState);
+          }
+          break;
+      }
+    }
+
+    // Initialize the chess board
+    function initBoard() {
+      const boardEl = document.getElementById('chessboard');
+      
+      const boardConfig = {
+        orientation: orientation,
+        movable: {
+          free: false,
+          color: config.allowMoves ? 'both' : undefined,
+          events: {
+            after: config.allowMoves ? afterMove : undefined
+          }
+        },
+        draggable: {
+          enabled: config.allowMoves
+        },
+        premovable: {
+          enabled: false
+        }
+      };
+
+      board = Chessground(boardEl, boardConfig);
+      updateBoard();
+    }
+
+    // After move handler
+    function afterMove(orig, dest) {
+      const move = orig + dest;
+      
+      // Validate move with chess.js
+      const chessMove = chess.move({
+        from: orig,
+        to: dest,
+        promotion: 'q' // Always promote to queen for simplicity
+      });
+
+      if (chessMove) {
+        // Send move to server
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'move',
+            sessionId: config.gameId,
+            move: move,
+            san: chessMove.san,
+            fen: chess.fen()
+          }));
+        }
+
+        // Notify parent window
+        window.parent.postMessage({
+          type: 'chess_move',
+          gameId: config.gameId,
+          move: move,
+          san: chessMove.san,
+          fen: chess.fen()
+        }, '*');
+      } else {
+        // Invalid move, reset board
+        updateBoard();
+      }
+    }
+
+    // Update board display
+    function updateBoard() {
+      if (!board) return;
+
+      board.set({
+        fen: chess.fen(),
+        turnColor: chess.turn() === 'w' ? 'white' : 'black',
+        movable: {
+          color: config.allowMoves ? (chess.turn() === 'w' ? 'white' : 'black') : undefined,
+          dests: config.allowMoves ? getLegalMoves() : new Map()
+        },
+        check: chess.inCheck()
+      });
+
+      updateStatus(\`\${chess.turn() === 'w' ? 'White' : 'Black'} to move\`);
+
+      // Check game over conditions
+      if (chess.isGameOver()) {
+        let status = 'Game Over - ';
+        if (chess.isCheckmate()) {
+          status += \`Checkmate! \${chess.turn() === 'w' ? 'Black' : 'White'} wins.\`;
+        } else if (chess.isDraw()) {
+          status += 'Draw!';
+        } else if (chess.isStalemate()) {
+          status += 'Stalemate!';
+        }
+        updateStatus(status);
+      }
+    }
+
+    // Get legal moves for the current position
+    function getLegalMoves() {
+      const dests = new Map();
+      const moves = chess.moves({ verbose: true });
+
+      moves.forEach(move => {
+        if (!dests.has(move.from)) {
+          dests.set(move.from, []);
+        }
+        dests.get(move.from).push(move.to);
+      });
+
+      return dests;
+    }
+
+    // Load game state
+    function loadGameState(gameState) {
+      if (gameState.fen) {
+        chess.load(gameState.fen);
+      } else {
+        chess.reset();
+      }
+
+      // Replay moves if provided
+      if (gameState.moves && gameState.moves.length > 0) {
+        chess.reset();
+        gameState.moves.forEach(move => {
+          chess.move(move.san || move.move);
+        });
+      }
+
+      updateBoard();
+    }
+
+    // Make a move
+    function makeMove(move, san) {
+      const chessMove = chess.move(san || move);
+      if (chessMove) {
+        updateBoard();
+      }
+    }
+
+    // Reset board
+    function resetBoard() {
+      chess.reset();
+      updateBoard();
+    }
+
+    // Update status display
+    function updateStatus(text) {
+      const statusEl = document.getElementById('turn-indicator');
+      if (statusEl) {
+        statusEl.textContent = text;
+      }
+    }
+
+    // Control functions
+    window.resetGame = function() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'reset_game',
+          sessionId: config.gameId
+        }));
+      }
+      resetBoard();
+    };
+
+    window.flipBoard = function() {
+      orientation = orientation === 'white' ? 'black' : 'white';
+      if (board) {
+        board.set({ orientation });
+      }
+    };
+
+    window.getHint = function() {
+      // Request hint from parent
+      window.parent.postMessage({
+        type: 'request_hint',
+        gameId: config.gameId,
+        fen: chess.fen()
+      }, '*');
+    };
+
+    // Listen for messages from parent window
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'chess_command') {
+        switch (event.data.command) {
+          case 'reset':
+            resetBoard();
+            break;
+          case 'flip':
+            flipBoard();
+            break;
+          case 'move':
+            if (event.data.move) {
+              makeMove(event.data.move, event.data.san);
+            }
+            break;
+          case 'load_fen':
+            if (event.data.fen) {
+              chess.load(event.data.fen);
+              updateBoard();
+            }
+            break;
+        }
+      }
+    });
+
+    // Initialize everything
+    initBoard();
+    initWebSocket();
+  </script>
+</body>
+</html>
+      `;
+
+      res.setHeader('Content-Type', 'text/html');
+      res.send(embedHtml);
     });
 
     // Serve Svelte app for all other routes  
@@ -945,6 +1370,9 @@ class ChessTrainerServer {
       console.log(`Chess Trainer MCP Server running on port ${port}`);
       console.log(`GUI available at http://localhost:${port}`);
       console.log(`WebSocket at ws://localhost:${port}/ws`);
+      
+      // Start game persistence (auto-save and cleanup)
+      this.gamePersistence.start();
     });
   }
 
@@ -967,12 +1395,12 @@ class ChessTrainerServer {
       }
     });
     
+    // Stop game persistence (saves all games)
+    this.gamePersistence.stop();
+    
     // Clear client mappings
     this.clients.clear();
     this.gameStates.clear();
-    
-    // Clean up game state manager
-    gameStateManager.cleanup();
     
     // Close HTTP server
     this.server.close((err) => {
