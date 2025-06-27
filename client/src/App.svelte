@@ -742,6 +742,25 @@
     handleNewGame(gameState.mode, gameState.playerColor, gameState.aiEloRating, gameState.aiTimeLimit, true);
   }
 
+  function handleEndGame(reason) {
+    console.log('🏁 Ending game:', reason);
+    
+    if (reason === 'resign') {
+      // Set the winner to the opponent
+      const resigningColor = gameState.turn;
+      gameState.winner = resigningColor === 'white' ? 'black' : 'white';
+      gameState.status = 'checkmate'; // Use checkmate status for resign
+      
+      console.log(`👑 ${gameState.winner} wins by resignation!`);
+      
+      // Clear any AI thinking state
+      gameState.aiThinking = false;
+      
+      // Update the game state
+      updateGameState();
+    }
+  }
+
   async function analyzePosition() {
     console.log('🔍 Starting position analysis...');
     isAnalyzing = true;
@@ -1148,6 +1167,7 @@
             {analysisResult}
             {isAnalyzing}
             onNewGame={handleNewGame}
+            onEndGame={handleEndGame}
             onRequestAnalysis={analyzePosition}
             onLoadCurrentGame={handleLoadCurrentGame}
             onLoadSampleGame={handleLoadSampleGame}

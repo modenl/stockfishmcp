@@ -59,7 +59,8 @@
         },
         events: {
           move: handleMove
-        }
+        },
+        lastMove: highlightedSquares.length >= 2 ? [highlightedSquares[0], highlightedSquares[1]] : undefined
       });
 
       console.log('Chessground initialized with chessops');
@@ -199,7 +200,8 @@
         movable: {
           color: getMovableColor(),
           dests: chessgroundDests(chess)
-        }
+        },
+        lastMove: highlightedSquares.length >= 2 ? [highlightedSquares[0], highlightedSquares[1]] : undefined
       });
     } catch (error) {
       console.error('Error updating board:', error);
