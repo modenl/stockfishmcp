@@ -54,6 +54,9 @@
     selectedSquare: null,
     highlightedSquares: [],
   };
+  
+  // Force reactive update when uiState changes
+  $: uiState && (uiState = uiState);
 
   // Engine evaluation
   let evaluation = {
@@ -330,6 +333,12 @@
             }
           }
           
+          // Highlight the move squares
+          if (moveData.uci && moveData.uci.length >= 4) {
+            uiState.highlightedSquares = [moveData.uci.substring(0, 2), moveData.uci.substring(2, 4)];
+            console.log('🎯 Highlighted server move squares:', uiState.highlightedSquares);
+          }
+          
           // Update UI
           updateGameState();
           
@@ -593,6 +602,13 @@
     gameState.moves.push(moveRecord);
     gameState.currentMoveIndex = gameState.moves.length - 1;
     
+    // Highlight the move squares
+    const uci = makeUci(move);
+    if (uci && uci.length >= 4) {
+      uiState.highlightedSquares = [uci.substring(0, 2), uci.substring(2, 4)];
+      console.log('🎯 Highlighted move squares:', uiState.highlightedSquares);
+    }
+    
     // Update UI
     updateGameState();
     
@@ -756,9 +772,18 @@
       // Clear any AI thinking state
       gameState.aiThinking = false;
       
+      // Force update the reactive state
+      gameState = gameState;
+      
       // Update the game state
       updateGameState();
     }
+  }
+  
+  function handleResetAI() {
+    console.log('🔄 Resetting AI thinking state');
+    gameState.aiThinking = false;
+    gameState = gameState; // Force reactive update
   }
 
   async function analyzePosition() {
@@ -1173,6 +1198,7 @@
             onLoadSampleGame={handleLoadSampleGame}
             onFileUpload={handleFileUpload}
             onShowNewGameModal={handleShowNewGameModal}
+            onResetAI={handleResetAI}
           />
         {:else}
           <!-- Show simple replay info when in replay mode -->
