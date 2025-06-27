@@ -5,6 +5,8 @@ import { gameStateManager } from './gameStateManager.js';
 
 export class MCPServer {
   constructor() {
+    this.initializeTools();
+
     this.server = new Server(
       {
         name: 'chess-trainer-mcp',
@@ -12,12 +14,10 @@ export class MCPServer {
       },
       {
         capabilities: {
-          tools: {},
+          tools: this.tools,
         },
       }
     );
-
-    this.initializeTools();
     this.setupHandlers();
   }
 

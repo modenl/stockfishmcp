@@ -33,6 +33,7 @@
     "ws": "^8.17.1"
   },
   "devDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.44.1",
     "concurrently": "^8.2.2",
     "nodemon": "^3.1.0"
   },
