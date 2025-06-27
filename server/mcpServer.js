@@ -1,6 +1,8 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { gameStateManager } from './gameStateManager.js';
 
 export class MCPServer {
@@ -8,11 +10,20 @@ export class MCPServer {
     this.server = new Server(
       {
         name: 'chess-trainer-mcp',
-        version: '1.0.9',
+        version: '1.0.11',
       },
       {
         capabilities: {
           tools: {},
+          resources: {},
+          prompts: {},
+          experimental: {
+            embedding: {
+              supported: true,
+              version: '1.0.0',
+              features: ['iframe', 'postMessage']
+            }
+          }
         },
       }
     );
@@ -23,311 +34,167 @@ export class MCPServer {
 
   initializeTools() {
     this.tools = [
+      // Server Management Tools
       {
-        name: 'analyze_position',
-        description: 'Analyze a chess position using Stockfish engine',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            fen: {
-              type: 'string',
-              description: 'FEN string representing the chess position'
-            },
-            depth: {
-              type: 'number',
-              description: 'Analysis depth (default: 15)',
-              default: 15
-            }
-          },
-          required: ['fen']
-        }
+        name: 'launch_chess_trainer',
+        description: 'Launch the Chess Trainer web server with optional browser opening',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            port: z.number().default(3456).describe('Port to run the web server on'),
+            auto_open_browser: z.boolean().default(true).describe('Automatically open browser after starting')
+          })
+        )
       },
       {
-        name: 'evaluate_move',
-        description: 'Evaluate a chess move and get analysis',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            fen: {
-              type: 'string',
-              description: 'FEN string of the position before the move'
-            },
-            move: {
-              type: 'string',
-              description: 'Move in algebraic notation (e.g., "e2-e4" or "Nf3")'
-            }
-          },
-          required: ['fen', 'move']
-        }
+        name: 'stop_chess_trainer',
+        description: 'Stop the Chess Trainer web server',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            port: z.number().default(3456).describe('Port of the server to stop')
+          })
+        )
       },
+      
+      // Game Management Tools
       {
-        name: 'get_best_moves',
-        description: 'Get the best moves for a given position',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            fen: {
-              type: 'string',
-              description: 'FEN string representing the chess position'
-            },
-            count: {
-              type: 'number',
-              description: 'Number of best moves to return (default: 3)',
-              default: 3
-            }
-          },
-          required: ['fen']
-        }
+        name: 'create_game',
+        description: 'Create a new chess game with specific settings',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            game_id: z.string().describe('Unique identifier for the game'),
+            mode: z.enum(['human_vs_human', 'human_vs_ai']).default('human_vs_ai').describe('Game mode'),
+            player_color: z.enum(['white', 'black']).default('white').describe('Player color when playing against AI'),
+            ai_elo: z.number().min(800).max(2800).default(1500).describe('AI strength in ELO rating (800-2800)'),
+            ai_time_limit: z.number().min(200).max(5000).default(1000).describe('AI thinking time in milliseconds')
+          })
+        )
       },
-      {
-        name: 'explain_opening',
-        description: 'Explain a chess opening and its principles',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            moves: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Array of moves in algebraic notation'
-            },
-            opening_name: {
-              type: 'string',
-              description: 'Name of the opening (optional)'
-            }
-          },
-          required: ['moves']
-        }
-      },
-      {
-        name: 'validate_fen',
-        description: 'Validate a FEN string and provide information about the position',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            fen: {
-              type: 'string',
-              description: 'FEN string to validate'
-            }
-          },
-          required: ['fen']
-        }
-      },
-      {
-        name: 'generate_pgn',
-        description: 'Generate PGN from a list of moves',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            moves: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'Array of moves in algebraic notation'
-            },
-            white_player: {
-              type: 'string',
-              description: 'White player name',
-              default: 'Player1'
-            },
-            black_player: {
-              type: 'string',
-              description: 'Black player name',
-              default: 'Player2'
-            }
-          },
-          required: ['moves']
-        }
-      },
-      {
-        name: 'start_chess_ui',
-        description: 'Start the Chess Trainer web UI interface',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            port: {
-              type: 'number',
-              description: 'Port to run the UI server on (default: 3456)',
-              default: 3456
-            },
-            mode: {
-              type: 'string',
-              enum: ['play', 'analyze', 'training'],
-              description: 'Chess mode: play, analyze, or training (default: play)',
-              default: 'play'
-            }
-          }
-        }
-      },
-      {
-        name: 'stop_chess_ui',
-        description: 'Stop the Chess Trainer web UI server',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            port: {
-              type: 'number',
-              description: 'Port of the server to stop (default: 3456)',
-              default: 3456
-            }
-          }
-        }
-      },
-      {
-        name: 'start_chess_game',
-        description: 'Start a chess game and automatically open browser',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            port: {
-              type: 'number',
-              description: 'Port to run the UI server on (default: 3456)',
-              default: 3456
-            },
-            mode: {
-              type: 'string',
-              enum: ['play', 'analyze', 'training'],
-              description: 'Chess mode: play, analyze, or training (default: play)',
-              default: 'play'
-            },
-            auto_open: {
-              type: 'boolean',
-              description: 'Automatically open browser (default: true)',
-              default: true
-            }
-          }
-        }
-      },
-      // 以下是代理到Web服务器的游戏交互工具
       {
         name: 'list_active_games',
         description: 'List all currently active chess games',
-        inputSchema: {
-          type: 'object',
-          properties: {}
-        }
+        inputSchema: zodToJsonSchema(z.object({}))
       },
       {
         name: 'get_game_state',
         description: 'Get the current state of a specific chess game',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            game_id: {
-              type: 'string',
-              description: 'ID of the game to get state for'
-            }
-          },
-          required: ['game_id']
-        }
-      },
-      {
-        name: 'make_move',
-        description: 'Make a move in an active chess game',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            game_id: {
-              type: 'string',
-              description: 'ID of the game to make move in'
-            },
-            move: {
-              type: 'string',
-              description: 'Move in algebraic notation (e.g., "e2e4", "Nf3", "O-O")'
-            }
-          },
-          required: ['game_id', 'move']
-        }
-      },
-      {
-        name: 'suggest_move',
-        description: 'Suggest the best move for current position in an active game',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            game_id: {
-              type: 'string',
-              description: 'ID of the game to suggest move for'
-            },
-            depth: {
-              type: 'number',
-              description: 'Analysis depth (default: 12)',
-              default: 12
-            }
-          },
-          required: ['game_id']
-        }
+        inputSchema: zodToJsonSchema(
+          z.object({
+            game_id: z.string().describe('ID of the game')
+          })
+        )
       },
       {
         name: 'reset_game',
-        description: 'Reset an active chess game to starting position',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            game_id: {
-              type: 'string',
-              description: 'ID of the game to reset'
-            }
-          },
-          required: ['game_id']
-        }
+        description: 'Reset a game to the starting position',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            game_id: z.string().describe('ID of the game to reset')
+          })
+        )
+      },
+
+      // Game Interaction Tools
+      {
+        name: 'make_move',
+        description: 'Make a move in an active chess game',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            game_id: z.string().describe('ID of the game'),
+            move: z.string().describe('Move in algebraic notation (e.g., "e2e4", "Nf3", "O-O")')
+          })
+        )
       },
       {
-        name: 'create_game_with_settings',
-        description: 'Create a new chess game with specific settings (mode, AI ELO, etc.)',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            game_id: {
-              type: 'string',
-              description: 'ID for the new game'
-            },
-            mode: {
-              type: 'string',
-              enum: ['human_vs_human', 'human_vs_ai'],
-              description: 'Game mode: human vs human or human vs AI',
-              default: 'human_vs_ai'
-            },
-            player_color: {
-              type: 'string',
-              enum: ['white', 'black'],
-              description: 'Player color when playing against AI',
-              default: 'white'
-            },
-            ai_elo: {
-              type: 'number',
-              minimum: 800,
-              maximum: 2800,
-              description: 'AI strength in ELO rating (800-2800)',
-              default: 1500
-            },
-            ai_time_limit: {
-              type: 'number',
-              minimum: 200,
-              maximum: 5000,
-              description: 'AI thinking time in milliseconds',
-              default: 1000
-            }
-          },
-          required: ['game_id']
-        }
+        name: 'suggest_best_move',
+        description: 'Get the best move suggestion for the current position',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            game_id: z.string().describe('ID of the game'),
+            depth: z.number().min(1).max(20).default(12).describe('Analysis depth')
+          })
+        )
+      },
+
+      // Analysis Tools
+      {
+        name: 'analyze_position',
+        description: 'Analyze a chess position (currently returns simulated analysis)',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            fen: z.string().describe('FEN string of the position to analyze'),
+            depth: z.number().min(1).max(20).default(15).describe('Analysis depth')
+          })
+        )
       },
       {
-        name: 'launch_chess_trainer',
-        description: 'Launch the complete Chess Trainer web application with UI',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            port: {
-              type: 'number',
-              description: 'Port to run the web server on',
-              default: 3456
-            },
-            auto_open_browser: {
-              type: 'boolean',
-              description: 'Automatically open browser after starting',
-              default: true
-            }
-          }
-        }
+        name: 'evaluate_move',
+        description: 'Evaluate the quality of a chess move',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            fen: z.string().describe('FEN string before the move'),
+            move: z.string().describe('Move to evaluate in algebraic notation')
+          })
+        )
+      },
+      {
+        name: 'get_best_moves',
+        description: 'Get the top N best moves for a position',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            fen: z.string().describe('FEN string of the position'),
+            count: z.number().min(1).max(10).default(3).describe('Number of best moves to return')
+          })
+        )
+      },
+
+      // Utility Tools
+      {
+        name: 'validate_fen',
+        description: 'Validate a FEN string and get position information',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            fen: z.string().describe('FEN string to validate')
+          })
+        )
+      },
+      {
+        name: 'generate_pgn',
+        description: 'Generate PGN notation from a list of moves',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            moves: z.array(z.string()).describe('Array of moves in algebraic notation'),
+            white_player: z.string().default('Player1').describe('White player name'),
+            black_player: z.string().default('Player2').describe('Black player name'),
+            event: z.string().default('Chess Trainer Game').describe('Event name'),
+            date: z.string().optional().describe('Game date (YYYY.MM.DD format)')
+          })
+        )
+      },
+      {
+        name: 'explain_opening',
+        description: 'Get explanation and principles of a chess opening',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            moves: z.array(z.string()).describe('Opening moves in algebraic notation'),
+            opening_name: z.string().optional().describe('Name of the opening (if known)')
+          })
+        )
+      },
+
+      // Embedding Tools
+      {
+        name: 'get_embeddable_url',
+        description: 'Get an embeddable URL for iframe integration',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            game_id: z.string().describe('Game ID to embed'),
+            mode: z.enum(['full', 'board-only', 'minimal']).default('minimal').describe('UI mode for embedded view'),
+            width: z.number().min(300).max(1200).default(600).describe('Width of the embedded view'),
+            height: z.number().min(300).max(1200).default(600).describe('Height of the embedded view'),
+            allow_moves: z.boolean().default(true).describe('Allow making moves in embedded view'),
+            show_controls: z.boolean().default(false).describe('Show game controls in embedded view')
+          })
+        )
       }
     ];
   }
@@ -350,50 +217,56 @@ export class MCPServer {
 
   async callTool(name, arguments_) {
     switch (name) {
+      // Server Management
+      case 'launch_chess_trainer':
+        return await this.launchChessTrainer(arguments_);
+      case 'stop_chess_trainer':
+        return await this.stopChessTrainer(arguments_);
+
+      // Game Management
+      case 'create_game':
+        return await this.createGame(arguments_);
+      case 'list_active_games':
+        return await this.proxyToWebServer('list_active_games', arguments_);
+      case 'get_game_state':
+        return await this.proxyToWebServer('get_game_state', arguments_);
+      case 'reset_game':
+        return await this.proxyToWebServer('reset_game', arguments_);
+
+      // Game Interaction
+      case 'make_move':
+        return await this.proxyToWebServer('make_move', arguments_);
+      case 'suggest_best_move':
+        return await this.proxyToWebServer('suggest_move', arguments_);
+
+      // Analysis Tools
       case 'analyze_position':
         return await this.analyzePosition(arguments_.fen, arguments_.depth);
       case 'evaluate_move':
         return await this.evaluateMove(arguments_.fen, arguments_.move);
       case 'get_best_moves':
         return await this.getBestMoves(arguments_.fen, arguments_.count);
-      case 'explain_opening':
-        return await this.explainOpening(arguments_.moves, arguments_.opening_name);
+
+      // Utility Tools
       case 'validate_fen':
         return await this.validateFen(arguments_.fen);
       case 'generate_pgn':
-        return await this.generatePgn(arguments_.moves, arguments_.white_player, arguments_.black_player);
-      case 'start_chess_ui':
-        return await this.startChessUI(arguments_.port, arguments_.mode);
-      case 'stop_chess_ui':
-        return await this.stopChessUI(arguments_.port);
-      case 'start_chess_game':
-        return await this.startChessGame(arguments_.port, arguments_.mode, arguments_.auto_open);
-      
-      // 代理到Web服务器的方法
-      case 'list_active_games':
-        return await this.proxyToWebServer('list_active_games', arguments_);
-      case 'get_game_state':
-        return await this.proxyToWebServer('get_game_state', arguments_);
-      case 'make_move':
-        return await this.proxyToWebServer('make_move', arguments_);
-      case 'suggest_move':
-        return await this.proxyToWebServer('suggest_move', arguments_);
-      case 'reset_game':
-        return await this.proxyToWebServer('reset_game', arguments_);
-      case 'create_game_with_settings':
-        return await this.createGameWithSettings(arguments_);
-      case 'launch_chess_trainer':
-        return await this.launchChessTrainer(arguments_);
-      
+        return await this.generatePgn(arguments_);
+      case 'explain_opening':
+        return await this.explainOpening(arguments_.moves, arguments_.opening_name);
+
+      // Embedding Tools
+      case 'get_embeddable_url':
+        return await this.getEmbeddableUrl(arguments_);
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
   }
 
-  // 代理方法：将请求转发给Web服务器
+  // Proxy method for web server communication
   async proxyToWebServer(action, args) {
     try {
-      // 通过HTTP API调用Web服务器
       const response = await fetch(`http://localhost:3456/api/mcp/${action}`, {
         method: 'POST',
         headers: {
@@ -418,337 +291,218 @@ export class MCPServer {
         return {
           content: [{
             type: 'text',
-            text: `❌ Connection Failed\n\n` +
-                  `🔌 Cannot connect to Chess Trainer web server at localhost:3456\n` +
-                  `💡 Please start the web server first with: start_chess_ui\n\n` +
-                  `🔧 Error: ${error.message}`
+            text: `❌ Chess Trainer Server Not Running\n\n` +
+                  `The chess trainer web server is not running on port 3456.\n` +
+                  `Please start it first using the 'launch_chess_trainer' tool.\n\n` +
+                  `Error: ${error.message}`
           }]
         };
       }
       
-      throw new Error(`Failed to proxy request to web server: ${error.message}`);
+      throw new Error(`Failed to connect to web server: ${error.message}`);
     }
   }
 
-  // 保留原有的独立工具方法
-  async analyzePosition(fen, depth = 15) {
+  async launchChessTrainer(args = {}) {
     try {
-      const analysis = await this.getStockfishAnalysis(fen, depth);
-      
-      return {
-        content: [{
-          type: 'text',
-          text: `🔍 Position Analysis\n\n` +
-                `📍 FEN: ${fen}\n` +
-                `🎯 Depth: ${depth}\n\n` +
-                `📊 Evaluation: ${analysis.evaluation}\n` +
-                `🎯 Best Move: ${analysis.bestMove}\n` +
-                `📈 Principal Variation: ${analysis.pv}\n` +
-                `💭 Assessment: ${analysis.assessment}\n\n` +
-                `💡 This analysis helps understand the position's strengths and weaknesses.`
-        }]
-      };
-    } catch (error) {
-      throw new Error(`Failed to analyze position: ${error.message}`);
-    }
-  }
+      const { port = 3456, auto_open_browser = true } = args;
 
-  async evaluateMove(fen, move) {
-    try {
-      // 模拟移动评估
-      const beforeEval = await this.getStockfishAnalysis(fen, 12);
-      
-      // 在实际实现中，这里会执行移动并分析新位置
-      const { Chess } = await import('chess.js');
-      const chess = new Chess(fen);
-      const moveResult = chess.move(move);
-      
-      if (!moveResult) {
-        return {
-          content: [{
-            type: 'text',
-            text: `❌ Invalid Move\n\n` +
-                  `🎯 Move: ${move}\n` +
-                  `📍 Position: ${fen}\n\n` +
-                  `💡 Please check the move notation and try again.`
-          }]
-        };
-      }
-
-      const newFen = chess.fen();
-      const afterEval = await this.getStockfishAnalysis(newFen, 12);
-      
-      const evalChange = parseFloat(afterEval.evaluation.replace('+', '')) - parseFloat(beforeEval.evaluation.replace('+', ''));
-      const quality = this.getMoveQuality(evalChange.toString());
-
-      return {
-        content: [{
-          type: 'text',
-          text: `♟️  Move Evaluation: ${moveResult.san}\n\n` +
-                `📍 Position Before: ${fen}\n` +
-                `📍 Position After: ${newFen}\n\n` +
-                `📊 Evaluation Change: ${evalChange > 0 ? '+' : ''}${evalChange.toFixed(2)}\n` +
-                `🎯 Move Quality: ${quality}\n` +
-                `💭 Assessment: ${afterEval.assessment}\n\n` +
-                `💡 ${quality === 'Excellent' ? 'Great move!' : quality === 'Good' ? 'Solid choice.' : 'Consider alternatives.'}`
-        }]
-      };
-    } catch (error) {
-      throw new Error(`Failed to evaluate move: ${error.message}`);
-    }
-  }
-
-  async getBestMoves(fen, count = 3) {
-    try {
-      const analysis = await this.getStockfishAnalysis(fen, 15);
-      
-      // 模拟多个最佳移动（实际中会从Stockfish获取）
-      const bestMoves = [
-        { move: analysis.bestMove, eval: analysis.evaluation, pv: analysis.pv },
-        { move: 'Nf3', eval: '+0.28', pv: 'Nf3 Nc6 Bb5' },
-        { move: 'd4', eval: '+0.25', pv: 'd4 d5 c4' }
-      ].slice(0, count);
-
-      let result = `🎯 Best Moves Analysis\n\n📍 Position: ${fen}\n\n`;
-      
-      bestMoves.forEach((moveData, index) => {
-        result += `${index + 1}. ${moveData.move} (${moveData.eval})\n`;
-        result += `   📈 Line: ${moveData.pv}\n\n`;
-      });
-
-      result += `💡 These moves are ranked by engine evaluation at depth 15.`;
-
-      return {
-        content: [{
-          type: 'text',
-          text: result
-        }]
-      };
-    } catch (error) {
-      throw new Error(`Failed to get best moves: ${error.message}`);
-    }
-  }
-
-  async explainOpening(moves, openingName) {
-    try {
-      const explanation = this.getOpeningExplanation(moves, openingName);
-      
-      return {
-        content: [{
-          type: 'text',
-          text: `📚 Opening Analysis${openingName ? `: ${openingName}` : ''}\n\n` +
-                `♟️  Moves: ${moves.join(' ')}\n\n` +
-                `💭 Explanation: ${explanation}\n\n` +
-                `🎯 Key Principles:\n` +
-                `• Control the center with pawns and pieces\n` +
-                `• Develop knights before bishops\n` +
-                `• Castle early for king safety\n` +
-                `• Don't move the same piece twice in opening\n\n` +
-                `💡 Understanding opening principles helps improve your chess foundation.`
-        }]
-      };
-    } catch (error) {
-      throw new Error(`Failed to explain opening: ${error.message}`);
-    }
-  }
-
-  async validateFen(fen) {
-    try {
-      const { Chess } = await import('chess.js');
-      
+      // Check if server is already running
       try {
-        const chess = new Chess(fen);
-        const turn = chess.turn() === 'w' ? 'White' : 'Black';
-        const inCheck = chess.isCheck();
-        const isCheckmate = chess.isCheckmate();
-        const isStalemate = chess.isStalemate();
-        
-        return {
-          content: [{
-            type: 'text',
-            text: `✅ Valid FEN Position\n\n` +
-                  `📍 FEN: ${fen}\n` +
-                  `🎲 Turn: ${turn} to move\n` +
-                  `⚠️  In Check: ${inCheck ? 'Yes' : 'No'}\n` +
-                  `♔ Checkmate: ${isCheckmate ? 'Yes' : 'No'}\n` +
-                  `🤝 Stalemate: ${isStalemate ? 'Yes' : 'No'}\n\n` +
-                  `💡 This position is legal and ready for analysis.`
-          }]
-        };
-      } catch (chessError) {
-        return {
-          content: [{
-            type: 'text',
-            text: `❌ Invalid FEN Position\n\n` +
-                  `📍 FEN: ${fen}\n` +
-                  `🚫 Error: ${chessError.message}\n\n` +
-                  `💡 Please check the FEN notation and try again.`
-          }]
-        };
-      }
-    } catch (error) {
-      throw new Error(`Failed to validate FEN: ${error.message}`);
-    }
-  }
-
-  async generatePgn(moves, whitePlayer = 'Player1', blackPlayer = 'Player2') {
-    try {
-      const { Chess } = await import('chess.js');
-      const chess = new Chess();
-      
-      // 验证并执行移动
-      const validMoves = [];
-      for (const move of moves) {
-        try {
-          const result = chess.move(move);
-          if (result) {
-            validMoves.push(result.san);
-          } else {
-            throw new Error(`Invalid move: ${move}`);
-          }
-        } catch (moveError) {
-          throw new Error(`Failed to process move "${move}": ${moveError.message}`);
-        }
-      }
-
-      // 生成PGN
-      const date = new Date().toISOString().split('T')[0];
-      let pgn = `[Event "Chess Trainer Game"]\n`;
-      pgn += `[Site "Chess Trainer MCP"]\n`;
-      pgn += `[Date "${date}"]\n`;
-      pgn += `[Round "1"]\n`;
-      pgn += `[White "${whitePlayer}"]\n`;
-      pgn += `[Black "${blackPlayer}"]\n`;
-      pgn += `[Result "*"]\n\n`;
-
-      // 添加移动
-      for (let i = 0; i < validMoves.length; i++) {
-        if (i % 2 === 0) {
-          pgn += `${Math.floor(i / 2) + 1}. ${validMoves[i]}`;
-        } else {
-          pgn += ` ${validMoves[i]}`;
-          if (i < validMoves.length - 1) pgn += '\n';
-        }
-      }
-      
-      pgn += ' *';
-
-      return {
-        content: [{
-          type: 'text',
-          text: `📋 Generated PGN\n\n${pgn}\n\n💡 This PGN can be imported into chess software for analysis.`
-        }]
-      };
-    } catch (error) {
-      throw new Error(`Failed to generate PGN: ${error.message}`);
-    }
-  }
-
-  async startChessUI(port = 3456, mode = 'play') {
-    try {
-      // 检查服务器是否已在运行
-      try {
-        const response = await fetch(`http://localhost:${port}/api/health`);
-        if (response.ok) {
+        const testResponse = await fetch(`http://localhost:${port}/api/health`);
+        if (testResponse.ok) {
           return {
             content: [{
               type: 'text',
-              text: `✅ Chess Trainer UI Already Running\n\n` +
-                    `🌐 URL: http://localhost:${port}\n` +
-                    `🎮 Mode: ${mode}\n` +
-                    `🔗 WebSocket: ws://localhost:${port}\n\n` +
-                    `💡 The server is already active and ready to use.`
+              text: `✅ Chess Trainer Already Running!\n\n` +
+                    `🌐 Web Interface: http://localhost:${port}\n` +
+                    `🔗 WebSocket: ws://localhost:${port}/ws\n\n` +
+                    `The server is already active. You can:\n` +
+                    `• Open http://localhost:${port} in your browser\n` +
+                    `• Use 'create_game' to start a new game\n` +
+                    `• Use 'list_active_games' to see current games`
             }]
           };
         }
       } catch (e) {
-        // 服务器未运行，继续启动
+        // Server not running, continue to start it
       }
 
-      // 启动服务器的逻辑这里简化，实际中需要启动子进程
-      return {
-        content: [{
-          type: 'text',
-          text: `🚀 Starting Chess Trainer UI...\n\n` +
-                `🌐 URL: http://localhost:${port}\n` +
-                `🎮 Mode: ${mode}\n` +
-                `🔗 WebSocket: ws://localhost:${port}\n\n` +
-                `💡 Please run "node server/index.js" to start the server.`
-        }]
-      };
-    } catch (error) {
-      throw new Error(`Failed to start Chess UI: ${error.message}`);
-    }
-  }
+      // Try direct server start first (more reliable for MCP context)
+      try {
+        const { startChessTrainerDirectly } = await import('./mcpServer-direct.js');
+        const result = await startChessTrainerDirectly(port);
+        
+        if (result.success) {
+          // Open browser if requested
+          let browserMessage = '';
+          if (auto_open_browser) {
+            try {
+              const open = (await import('open')).default;
+              await open(`http://localhost:${port}`);
+              browserMessage = '🌐 Browser opened automatically\n';
+            } catch (e) {
+              browserMessage = '⚠️  Could not open browser automatically\n';
+            }
+          }
 
-  async stopChessUI(port = 3456) {
-    try {
-      return {
-        content: [{
-          type: 'text',
-          text: `⏹️  Chess Trainer UI Stop Requested\n\n` +
-                `🌐 Port: ${port}\n\n` +
-                `💡 Please manually stop the server process if needed.`
-        }]
-      };
-    } catch (error) {
-      throw new Error(`Failed to stop Chess UI: ${error.message}`);
-    }
-  }
+          return {
+            content: [{
+              type: 'text',
+              text: `🚀 Chess Trainer Started Successfully!\n\n` +
+                    `🌐 Web Interface: ${result.url}\n` +
+                    `🔗 WebSocket: ws://localhost:${port}/ws\n` +
+                    browserMessage +
+                    `\nThe server is now running. You can:\n` +
+                    `• Use 'create_game' to start a new game\n` +
+                    `• Visit ${result.url} in your browser`
+            }]
+          };
+        }
+      } catch (directStartError) {
+        console.error('Direct start failed:', directStartError);
+        // Fall back to spawn method
+      }
 
-  async startChessGame(port = 3456, mode = 'play', autoOpen = true) {
-    try {
-      const uiResult = await this.startChessUI(port, mode);
+      // Start the Chess Trainer server
+      const { spawn } = await import('child_process');
+      const path = await import('path');
+      const fs = await import('fs');
       
+      const binPath = path.join(process.cwd(), 'bin', 'chess-trainer-mcp');
+      
+      // Check if binary exists
+      if (!fs.existsSync(binPath)) {
+        throw new Error(`Chess Trainer binary not found at ${binPath}`);
+      }
+      
+      // Start the server with output capture for debugging
+      const serverProcess = spawn('node', [binPath], {
+        cwd: process.cwd(),
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      
+      // Capture any early errors
+      let startupError = '';
+      serverProcess.stderr?.on('data', (data) => {
+        startupError += data.toString();
+      });
+      
+      serverProcess.on('error', (err) => {
+        console.error('Failed to start server process:', err);
+      });
+
+      serverProcess.unref();
+
+      // Give server time to start with retry logic
+      let serverStarted = false;
+      const maxRetries = 10;
+      const retryDelay = 1000; // 1 second between retries
+      
+      for (let i = 0; i < maxRetries; i++) {
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        
+        try {
+          const healthCheck = await fetch(`http://localhost:${port}/api/health`);
+          if (healthCheck.ok) {
+            serverStarted = true;
+            break;
+          }
+        } catch (e) {
+          // Server not ready yet, continue retrying
+          if (i === maxRetries - 1) {
+            const errorMsg = `Server failed to start after ${maxRetries} attempts (${maxRetries * retryDelay / 1000} seconds)`;
+            if (startupError) {
+              throw new Error(`${errorMsg}\nStartup errors: ${startupError}`);
+            }
+            throw new Error(errorMsg);
+          }
+        }
+      }
+      
+      if (!serverStarted) {
+        throw new Error('Failed to verify server startup');
+      }
+
+      // Open browser if requested
+      let browserMessage = '';
+      if (auto_open_browser) {
+        try {
+          const open = (await import('open')).default;
+          await open(`http://localhost:${port}`);
+          browserMessage = '🌐 Browser opened automatically\n';
+        } catch (e) {
+          browserMessage = '⚠️  Could not open browser automatically\n';
+        }
+      }
+
       return {
         content: [{
           type: 'text',
-          text: `🎮 Chess Game Starting...\n\n` +
-                `🌐 URL: http://localhost:${port}\n` +
-                `🎯 Mode: ${mode}\n` +
-                `🖥️  Auto-open browser: ${autoOpen ? 'Yes' : 'No'}\n\n` +
-                `${uiResult.content[0].text.split('\n\n').slice(1).join('\n\n')}`
+          text: `🚀 Chess Trainer Started Successfully!\n\n` +
+                `🌐 Web Interface: http://localhost:${port}\n` +
+                `🔗 WebSocket: ws://localhost:${port}/ws\n` +
+                browserMessage +
+                `\nThe server is now running. You can:\n` +
+                `• Use 'create_game' to start a new game\n` +
+                `• Visit http://localhost:${port} in your browser\n\n` +
+                `Note: First startup may take longer as it builds the client interface.`
         }]
       };
     } catch (error) {
-      throw new Error(`Failed to start chess game: ${error.message}`);
+      throw new Error(`Failed to launch Chess Trainer: ${error.message}`);
     }
   }
 
-  // Helper Methods
-  async getStockfishAnalysis(fen, depth) {
-    // 模拟 Stockfish 分析结果
-    // 在实际实现中，这里会启动 Stockfish 进程并解析输出
-    return {
-      evaluation: '+0.34',
-      bestMove: 'e2e4',
-      pv: 'e2e4 e7e5 Ng1f3',
-      assessment: 'Slightly better for White'
-    };
+  async stopChessTrainer(args = {}) {
+    try {
+      const { port = 3456 } = args;
+      
+      // First try the direct stop method if server was started directly
+      try {
+        const { stopChessTrainerDirectly } = await import('./mcpServer-direct.js');
+        const directResult = stopChessTrainerDirectly();
+        if (directResult.success) {
+          return {
+            content: [{
+              type: 'text',
+              text: `✅ ${directResult.message}\n\n` +
+                    `The Chess Trainer server has been stopped.`
+            }]
+          };
+        }
+      } catch (e) {
+        // Direct stop failed, try system approach
+      }
+
+      // Use system commands to stop server on port
+      const { stopChessTrainerServer } = await import('./mcpServer-stop.js');
+      const result = await stopChessTrainerServer(port);
+      
+      if (result.success) {
+        return {
+          content: [{
+            type: 'text',
+            text: `✅ ${result.message}\n\n` +
+                  `The Chess Trainer server on port ${port} has been stopped.`
+          }]
+        };
+      } else {
+        return {
+          content: [{
+            type: 'text',
+            text: `⚠️ ${result.message}\n\n` +
+                  `The server may not be running or may have already been stopped.`
+          }]
+        };
+      }
+    } catch (error) {
+      throw new Error(`Failed to stop Chess Trainer: ${error.message}`);
+    }
   }
 
-  getMoveQuality(evaluation) {
-    const numEval = parseFloat(evaluation.replace('+', ''));
-    if (Math.abs(numEval) < 0.25) return 'Excellent';
-    if (Math.abs(numEval) < 0.75) return 'Good';
-    if (Math.abs(numEval) < 1.5) return 'Inaccuracy';
-    if (Math.abs(numEval) < 3.0) return 'Mistake';
-    return 'Blunder';
-  }
-
-  getOpeningExplanation(moves, openingName) {
-    // 简化的开局解释
-    const commonOpenings = {
-      'e4': 'King\'s Pawn opening - Controls the center and develops pieces quickly',
-      'd4': 'Queen\'s Pawn opening - Solid central control with potential for queenside expansion',
-      'Nf3': 'Réti Opening - Flexible development that can transpose to various openings'
-    };
-
-    const firstMove = moves[0];
-    return commonOpenings[firstMove] || 'This opening focuses on piece development and central control.';
-  }
-
-  async createGameWithSettings(args) {
+  async createGame(args) {
     try {
       const {
         game_id,
@@ -758,7 +512,7 @@ export class MCPServer {
         ai_time_limit = 1000
       } = args;
 
-      // Create game with settings via API
+      // Use the reset_game endpoint with settings
       const response = await fetch(`http://localhost:3456/api/mcp/reset_game`, {
         method: 'POST',
         headers: {
@@ -776,7 +530,7 @@ export class MCPServer {
       });
 
       if (!response.ok) {
-        throw new Error(`Web server responded with status ${response.status}`);
+        throw new Error(`Server responded with status ${response.status}`);
       }
 
       const result = await response.json();
@@ -784,15 +538,18 @@ export class MCPServer {
       return {
         content: [{
           type: 'text',
-          text: `🎮 Chess Game Created Successfully!\n\n` +
+          text: `🎮 Chess Game Created!\n\n` +
                 `🆔 Game ID: ${game_id}\n` +
                 `🎯 Mode: ${mode === 'human_vs_ai' ? 'Human vs AI' : 'Human vs Human'}\n` +
-                `🎨 Your Color: ${player_color === 'white' ? 'White (first move)' : 'Black (second move)'}\n` +
-                `🤖 AI Strength: ${ai_elo} ELO\n` +
-                `⏱️ AI Think Time: ${ai_time_limit/1000} seconds\n\n` +
-                `🌐 Play at: http://localhost:3456\n` +
-                `💡 Use 'make_move ${game_id} <move>' to make moves\n` +
-                `💡 Use 'get_game_state ${game_id}' to check status`
+                (mode === 'human_vs_ai' ? 
+                  `🎨 Your Color: ${player_color}\n` +
+                  `🤖 AI Strength: ${ai_elo} ELO\n` +
+                  `⏱️ AI Think Time: ${ai_time_limit/1000}s\n` : '') +
+                `\n🌐 Play at: http://localhost:3456\n` +
+                `\nNext steps:\n` +
+                `• Use 'make_move ${game_id} <move>' to play\n` +
+                `• Use 'get_game_state ${game_id}' to see the board\n` +
+                `• Use 'suggest_best_move ${game_id}' for help`
         }]
       };
     } catch (error) {
@@ -800,10 +557,9 @@ export class MCPServer {
         return {
           content: [{
             type: 'text',
-            text: `❌ Connection Failed\n\n` +
-                  `🔌 Cannot connect to Chess Trainer web server\n` +
-                  `💡 Please start the web server first with: launch_chess_trainer\n\n` +
-                  `🔧 Error: ${error.message}`
+            text: `❌ Chess Trainer Server Not Running\n\n` +
+                  `Please start the server first with 'launch_chess_trainer'.\n` +
+                  `Error: ${error.message}`
           }]
         };
       }
@@ -812,82 +568,368 @@ export class MCPServer {
     }
   }
 
-  async launchChessTrainer(args = {}) {
+  // Analysis tool implementations (currently mocked - need real Stockfish integration)
+  async analyzePosition(fen, depth = 15) {
     try {
-      const { port = 3456, auto_open_browser = true } = args;
+      // TODO: Integrate real Stockfish analysis
+      const mockAnalysis = {
+        evaluation: '+0.34',
+        bestMove: 'e2e4',
+        pv: 'e2e4 e7e5 Ng1f3',
+        assessment: 'Slightly better for White'
+      };
+      
+      return {
+        content: [{
+          type: 'text',
+          text: `📊 Position Analysis\n\n` +
+                `📍 FEN: ${fen}\n` +
+                `🔍 Depth: ${depth}\n\n` +
+                `📈 Evaluation: ${mockAnalysis.evaluation}\n` +
+                `🎯 Best Move: ${mockAnalysis.bestMove}\n` +
+                `📋 Principal Variation: ${mockAnalysis.pv}\n` +
+                `💭 Assessment: ${mockAnalysis.assessment}\n\n` +
+                `⚠️  Note: This is simulated analysis. Real Stockfish integration pending.`
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to analyze position: ${error.message}`);
+    }
+  }
 
-      // Check if server is already running
-      try {
-        const testResponse = await fetch(`http://localhost:${port}/api/health`);
-        if (testResponse.ok) {
-          return {
-            content: [{
-              type: 'text',
-              text: `✅ Chess Trainer Already Running!\n\n` +
-                    `🌐 Access at: http://localhost:${port}\n` +
-                    `💡 Ready to create games and play chess!\n\n` +
-                    `🎮 Next steps:\n` +
-                    `1. Use 'create_game_with_settings' to set up a new game\n` +
-                    `2. Use 'make_move' to play\n` +
-                    `3. Open browser to see the visual interface`
-            }]
-          };
-        }
-      } catch (e) {
-        // Server not running, continue to start it
+  async evaluateMove(fen, move) {
+    try {
+      const { Chess } = await import('chess.js');
+      const chess = new Chess(fen);
+      const moveResult = chess.move(move);
+      
+      if (!moveResult) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Invalid Move\n\n` +
+                  `Move "${move}" is not legal in the given position.\n` +
+                  `Please check the move notation and try again.`
+          }]
+        };
       }
 
-      // Start the Chess Trainer server
-      const { spawn } = await import('child_process');
-      const path = await import('path');
-      const serverPath = path.join(process.cwd(), 'server', 'index.js');
+      // TODO: Real evaluation with Stockfish
+      return {
+        content: [{
+          type: 'text',
+          text: `♟️ Move Evaluation: ${moveResult.san}\n\n` +
+                `✅ Move is legal\n` +
+                `📍 New position: ${chess.fen()}\n\n` +
+                `⚠️  Note: Detailed move quality analysis requires Stockfish integration.`
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to evaluate move: ${error.message}`);
+    }
+  }
+
+  async getBestMoves(fen, count = 3) {
+    try {
+      // TODO: Real Stockfish integration
+      const mockMoves = [
+        { move: 'e2e4', eval: '+0.31', line: 'e2e4 e7e5 Ng1f3 Nb8c6' },
+        { move: 'd2d4', eval: '+0.28', line: 'd2d4 d7d5 c2c4 e7e6' },
+        { move: 'Ng1f3', eval: '+0.25', line: 'Ng1f3 Ng8f6 c2c4 e7e6' }
+      ].slice(0, count);
+
+      let result = `🎯 Best Moves Analysis\n\n`;
+      result += `📍 Position: ${fen}\n\n`;
       
-      const serverProcess = spawn('node', [serverPath], {
-        cwd: process.cwd(),
-        detached: true,
-        stdio: 'ignore'
+      mockMoves.forEach((m, i) => {
+        result += `${i + 1}. ${m.move} (${m.eval})\n`;
+        result += `   📋 Line: ${m.line}\n\n`;
       });
 
-      // Give server time to start
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      // Verify server started
-      try {
-        const healthCheck = await fetch(`http://localhost:${port}/api/health`);
-        if (!healthCheck.ok) {
-          throw new Error('Server health check failed');
-        }
-      } catch (e) {
-        throw new Error('Failed to verify server startup');
-      }
-
-      // Open browser if requested
-      if (auto_open_browser) {
-        try {
-          const open = (await import('open')).default;
-          await open(`http://localhost:${port}`);
-        } catch (e) {
-          // Browser opening failed, but server is running
-        }
-      }
+      result += `⚠️  Note: This shows example moves. Real engine analysis pending.`;
 
       return {
         content: [{
           type: 'text',
-          text: `🚀 Chess Trainer Launched Successfully!\n\n` +
-                `🌐 Web Interface: http://localhost:${port}\n` +
-                `🖥️ Server Status: Running\n` +
-                `${auto_open_browser ? '🌐 Browser opened automatically' : '💡 Open browser manually to access UI'}\n\n` +
-                `🎮 Ready to play! Next steps:\n` +
-                `1. Use 'create_game_with_settings' to set up a game\n` +
-                `2. Set your preferred AI ELO (800-2800)\n` +
-                `3. Choose your color and start playing!\n\n` +
-                `💡 Example: create_game_with_settings game_id="my_game" ai_elo=1800`
+          text: result
         }]
       };
     } catch (error) {
-      throw new Error(`Failed to launch Chess Trainer: ${error.message}`);
+      throw new Error(`Failed to get best moves: ${error.message}`);
     }
+  }
+
+  async validateFen(fen) {
+    try {
+      const { Chess } = await import('chess.js');
+      
+      try {
+        const chess = new Chess(fen);
+        const turn = chess.turn() === 'w' ? 'White' : 'Black';
+        const inCheck = chess.isCheck();
+        const isCheckmate = chess.isCheckmate();
+        const isStalemate = chess.isStalemate();
+        const isDraw = chess.isDraw();
+        const isInsufficientMaterial = chess.isInsufficientMaterial();
+        const isThreefoldRepetition = chess.isThreefoldRepetition();
+        
+        let status = '✅ Valid FEN Position\n\n';
+        status += `📍 FEN: ${fen}\n\n`;
+        status += `🎯 Turn: ${turn}\n`;
+        
+        if (inCheck) status += `⚠️ Check: Yes\n`;
+        if (isCheckmate) status += `♔ Checkmate: Yes - ${turn === 'White' ? 'Black' : 'White'} wins!\n`;
+        if (isStalemate) status += `🤝 Stalemate: Yes - Draw!\n`;
+        if (isDraw) status += `🤝 Draw: Yes\n`;
+        if (isInsufficientMaterial) status += `📉 Insufficient Material: Yes\n`;
+        if (isThreefoldRepetition) status += `🔄 Threefold Repetition: Yes\n`;
+        
+        return {
+          content: [{
+            type: 'text',
+            text: status
+          }]
+        };
+      } catch (chessError) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Invalid FEN Position\n\n` +
+                  `The provided FEN string is not valid.\n` +
+                  `Error: ${chessError.message}\n\n` +
+                  `FEN format: <pieces> <turn> <castling> <en-passant> <halfmove> <fullmove>`
+          }]
+        };
+      }
+    } catch (error) {
+      throw new Error(`Failed to validate FEN: ${error.message}`);
+    }
+  }
+
+  async generatePgn(args) {
+    try {
+      const { 
+        moves, 
+        white_player = 'Player1', 
+        black_player = 'Player2',
+        event = 'Chess Trainer Game',
+        date = new Date().toISOString().split('T')[0].replace(/-/g, '.')
+      } = args;
+
+      const { Chess } = await import('chess.js');
+      const chess = new Chess();
+      
+      // Validate and execute moves
+      const validMoves = [];
+      for (const move of moves) {
+        try {
+          const result = chess.move(move);
+          if (result) {
+            validMoves.push(result.san);
+          } else {
+            throw new Error(`Invalid move: ${move}`);
+          }
+        } catch (moveError) {
+          return {
+            content: [{
+              type: 'text',
+              text: `❌ Error in move sequence\n\n` +
+                    `Failed at move "${move}"\n` +
+                    `${moveError.message}\n\n` +
+                    `Valid moves so far: ${validMoves.join(' ')}`
+            }]
+          };
+        }
+      }
+
+      // Generate PGN
+      let pgn = `[Event "${event}"]\n`;
+      pgn += `[Site "Chess Trainer MCP"]\n`;
+      pgn += `[Date "${date}"]\n`;
+      pgn += `[Round "?"]\n`;
+      pgn += `[White "${white_player}"]\n`;
+      pgn += `[Black "${black_player}"]\n`;
+      pgn += `[Result "*"]\n\n`;
+
+      // Format moves
+      for (let i = 0; i < validMoves.length; i++) {
+        if (i % 2 === 0) {
+          pgn += `${Math.floor(i / 2) + 1}. ${validMoves[i]}`;
+        } else {
+          pgn += ` ${validMoves[i]}`;
+          if (i < validMoves.length - 1) pgn += '\n';
+        }
+      }
+      
+      if (validMoves.length > 0) pgn += ' *';
+
+      return {
+        content: [{
+          type: 'text',
+          text: `📋 Generated PGN\n\n${pgn}\n\n` +
+                `✅ ${validMoves.length} moves validated and formatted\n` +
+                `💡 This PGN can be imported into any chess software`
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to generate PGN: ${error.message}`);
+    }
+  }
+
+  async explainOpening(moves, openingName) {
+    try {
+      // Enhanced opening database
+      const openingDatabase = {
+        'e4': { 
+          name: "King's Pawn", 
+          idea: "Controls center, develops pieces quickly"
+        },
+        'd4': { 
+          name: "Queen's Pawn", 
+          idea: "Solid center control, strategic play"
+        },
+        'Nf3': { 
+          name: "Réti Opening", 
+          idea: "Flexible development, delays center commitment"
+        },
+        'c4': { 
+          name: "English Opening", 
+          idea: "Controls d5, flexible pawn structure"
+        },
+        'e4,e5,Nf3,Nc6,Bb5': { 
+          name: "Ruy Lopez", 
+          idea: "Pressures e5 pawn, aims for center control"
+        },
+        'e4,e5,Nf3,Nc6,Bc4': { 
+          name: "Italian Game", 
+          idea: "Quick development, targets f7 weakness"
+        },
+        'e4,c5': { 
+          name: "Sicilian Defense", 
+          idea: "Asymmetrical, fights for initiative"
+        },
+        'd4,d5,c4': { 
+          name: "Queen's Gambit", 
+          idea: "Challenges black's center, gains space"
+        },
+        'd4,Nf6,c4,g6': { 
+          name: "King's Indian Defense", 
+          idea: "Flexible setup, counterattack potential"
+        }
+      };
+
+      const moveString = moves.join(',');
+      const opening = openingDatabase[moveString] || 
+                      openingDatabase[moves[0]] || 
+                      { name: openingName || "Unknown Opening", idea: "Develops pieces and controls center" };
+
+      return {
+        content: [{
+          type: 'text',
+          text: `📚 Opening Analysis\n\n` +
+                `🏷️ Opening: ${opening.name}\n` +
+                `♟️ Moves: ${moves.join(' ')}\n\n` +
+                `💡 Main Idea: ${opening.idea}\n\n` +
+                `📋 General Opening Principles:\n` +
+                `• Control the center with pawns\n` +
+                `• Develop knights before bishops\n` +
+                `• Castle early for king safety\n` +
+                `• Don't move the same piece twice\n` +
+                `• Don't bring queen out too early\n` +
+                `• Connect your rooks`
+        }]
+      };
+    } catch (error) {
+      throw new Error(`Failed to explain opening: ${error.message}`);
+    }
+  }
+
+  async getEmbeddableUrl(args) {
+    try {
+      const {
+        game_id,
+        mode = 'minimal',
+        width = 600,
+        height = 600,
+        allow_moves = true,
+        show_controls = false
+      } = args;
+
+      // Check if server is running
+      const port = 3456; // Default port, could be made configurable
+      try {
+        const response = await fetch(`http://localhost:${port}/api/health`);
+        if (!response.ok) {
+          throw new Error('Chess Trainer server is not running');
+        }
+      } catch (e) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Chess Trainer server is not running\n\n` +
+                  `Please start the server first using 'launch_chess_trainer'`
+          }]
+        };
+      }
+
+      // Generate embed URL with parameters
+      const params = new URLSearchParams({
+        game_id,
+        mode,
+        width: width.toString(),
+        height: height.toString(),
+        allow_moves: allow_moves.toString(),
+        show_controls: show_controls.toString()
+      });
+
+      const embedUrl = `http://localhost:${port}/embed?${params.toString()}`;
+      
+      // Generate iframe code
+      const iframeCode = `<iframe 
+  src="${embedUrl}"
+  width="${width}"
+  height="${height}"
+  frameborder="0"
+  allow="fullscreen"
+  style="border: 1px solid #ccc; border-radius: 8px;"
+></iframe>`;
+
+      return {
+        content: [{
+          type: 'text',
+          text: `🎮 Embeddable Chess Board URL\n\n` +
+                `📍 Game ID: ${game_id}\n` +
+                `🖼️ Mode: ${mode}\n` +
+                `📐 Size: ${width}x${height}\n` +
+                `🎯 Interactive: ${allow_moves ? 'Yes' : 'View Only'}\n` +
+                `🎛️ Controls: ${show_controls ? 'Visible' : 'Hidden'}\n\n` +
+                `🔗 Embed URL:\n${embedUrl}\n\n` +
+                `📋 IFrame Code:\n\`\`\`html\n${iframeCode}\n\`\`\`\n\n` +
+                `💡 This URL can be embedded in any web application that supports iframes.`
+        }],
+        // Include structured data for programmatic access
+        data: {
+          url: embedUrl,
+          iframe_code: iframeCode,
+          parameters: {
+            game_id,
+            mode,
+            width,
+            height,
+            allow_moves,
+            show_controls
+          }
+        }
+      };
+    } catch (error) {
+      throw new Error(`Failed to generate embeddable URL: ${error.message}`);
+    }
+  }
+
+  async listTools() {
+    return {
+      tools: this.tools
+    };
   }
 
   async run() {
@@ -897,8 +939,8 @@ export class MCPServer {
   }
 }
 
-// 如果直接运行此文件，启动服务器
+// Run server if called directly
 if (import.meta.url === `file://${process.argv[1]}`) {
   const server = new MCPServer();
   server.run().catch(console.error);
-} 
+}

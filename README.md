@@ -21,15 +21,18 @@ A comprehensive chess training application with AI-powered analysis using Stockf
 ### 🔄 Server-Authoritative Architecture
 - **Real-time Synchronization**: All moves are validated and synchronized through the server
 - **WebSocket Communication**: Instant updates across all connected clients
-- **State Persistence**: Game state is maintained on the server for reliability
+- **State Persistence**: Games are automatically saved to disk and survive server restarts
+- **Auto-Save**: Games are saved every 30 seconds and on server shutdown
+- **Game Recovery**: All active games are restored when the server restarts
 - **Unified Move Handling**: Both human and AI moves follow the same server-sync flow
 
 ### 🤖 MCP Integration
-- **14 Chess Analysis & Game Tools**: Complete set of MCP tools for AI assistants
-- **Position Analysis**: Analyze any chess position with Stockfish
-- **Move Evaluation**: Get detailed move quality assessments
-- **Opening Explanations**: Learn chess opening principles
-- **UI Management**: Start/stop chess interface from AI assistants
+- **14 Organized Chess Tools**: Complete MCP tools for AI assistants
+- **Server Management**: Launch and control the chess trainer server
+- **Game Management**: Create, list, and manage chess games
+- **Game Interaction**: Make moves and get AI suggestions
+- **Analysis Tools**: Position analysis, move evaluation, and best move suggestions
+- **Utility Tools**: FEN validation, PGN generation, and opening explanations
 
 ## 🚀 Quick Start
 
@@ -71,29 +74,36 @@ Move Made → Sync to Server → Server Validates → WebSocket Broadcast → Cl
 
 ### 🤖 MCP Integration for AI Assistants
 
-Chess Trainer MCP Server provides 14 powerful chess analysis and interactive game tools that can be used by AI assistants like Claude, Cursor, and other MCP-compatible hosts.
+Chess Trainer MCP Server provides 15 well-organized chess tools that can be used by AI assistants like Claude, Cursor, and other MCP-compatible hosts.
 
 #### Available Tools:
 
-**📊 Analysis Tools:**
-1. **`analyze_position`** - Analyze chess positions using Stockfish engine
-2. **`evaluate_move`** - Evaluate move quality and get detailed analysis
-3. **`get_best_moves`** - Get best move recommendations for any position
-4. **`explain_opening`** - Explain chess opening principles and theory
-5. **`validate_fen`** - Validate FEN strings and get position information
-6. **`generate_pgn`** - Generate PGN from move sequences
+**🚀 Server Management:**
+1. **`launch_chess_trainer`** - Launch the Chess Trainer web server with optional browser opening
+2. **`stop_chess_trainer`** - Stop the Chess Trainer web server
 
 **🎮 Game Management:**
-7. **`start_chess_ui`** - Start the Chess Trainer web interface
-8. **`stop_chess_ui`** - Stop the UI server
-9. **`start_chess_game`** - Start a chess game and automatically open browser
+3. **`create_game`** - Create a new chess game with specific settings (mode, AI ELO, color)
+4. **`list_active_games`** - List all currently active chess games
+5. **`get_game_state`** - Get the current state of a specific chess game
+6. **`reset_game`** - Reset a game to the starting position
 
-**🎯 Interactive Game Control:**
-10. **`list_active_games`** - List all currently running chess games
-11. **`get_game_state`** - Get detailed state of any active game
-12. **`make_move`** - Make moves in active games via MCP
-13. **`suggest_move`** - Get AI move suggestions for active games
-14. **`reset_game`** - Reset any active game to starting position
+**🎯 Game Interaction:**
+7. **`make_move`** - Make a move in an active chess game
+8. **`suggest_best_move`** - Get the best move suggestion for the current position
+
+**📊 Analysis Tools:**
+9. **`analyze_position`** - Analyze a chess position (currently simulated, real Stockfish integration pending)
+10. **`evaluate_move`** - Evaluate the quality of a chess move
+11. **`get_best_moves`** - Get the top N best moves for a position
+
+**🔧 Utility Tools:**
+12. **`validate_fen`** - Validate a FEN string and get position information
+13. **`generate_pgn`** - Generate PGN notation from a list of moves
+14. **`explain_opening`** - Get explanation and principles of a chess opening
+
+**🌐 Embedding Tools:**
+15. **`get_embeddable_url`** - Get an embeddable URL for iframe integration
 
 ## 🔧 MCP Host Configuration
 
@@ -238,7 +248,7 @@ npm run setup
 npm start
 
 # Use as MCP server
-node bin/mcp-server.js
+node bin/mcp
 ```
 
 ## 🛠️ Command Options
@@ -277,7 +287,9 @@ Once configured, you can ask your AI assistant to:
 
 **🎮 Game Management:**
 ```
-"Start a chess game for me"
+"Launch the chess trainer server"
+
+"Create a new chess game with ID 'my-game' against AI with 1800 ELO"
 
 "List all active chess games"
 
@@ -288,7 +300,7 @@ Once configured, you can ask your AI assistant to:
 ```
 "Make the move e2e4 in game session_12345"
 
-"What's the best move for the current position in my active game?"
+"Suggest the best move for game 'my-game'"
 
 "Reset the chess game to starting position"
 
@@ -379,7 +391,7 @@ NODE_ENV=development                         # Environment mode
     "chess-trainer-mcp": {
       "transportType": "stdio",
       "command": "node",
-      "args": ["/path/to/stockfishmcp/bin/mcp-server.js"]
+      "args": ["/path/to/stockfishmcp/bin/mcp"]
     }
   }
 }
@@ -452,7 +464,7 @@ rm -rf ~/.npm/_npx
     "chess-trainer-mcp": {
       "transportType": "stdio",
       "command": "node",
-      "args": ["/path/to/stockfishmcp/bin/mcp-server.js"],
+      "args": ["/path/to/stockfishmcp/bin/mcp"],
       "cwd": "/path/to/stockfishmcp"
     }
   }
@@ -479,7 +491,7 @@ rm -rf ~/.npm/_npx
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | npx --package=chess-trainer-mcp chess-trainer-mcp-server
 
 # Test using local path (if you have the source)
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | node /path/to/stockfishmcp/bin/mcp-server.js
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | node /path/to/stockfishmcp/bin/mcp
 
 # Should return: {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05",...}}
 ```
@@ -487,18 +499,18 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 #### Test Tool Discovery
 ```bash
 # List all available tools
-echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | node bin/mcp-server.js
+echo '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' | node bin/mcp
 
-# Should return 14 tools including interactive game tools
+# Should return 14 organized tools across 5 categories
 ```
 
 #### Test Interactive Features
 ```bash
 # Test listing active games
-echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_active_games","arguments":{}}}' | node bin/mcp-server.js
+echo '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_active_games","arguments":{}}}' | node bin/mcp
 
 # Test position analysis
-echo '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"analyze_position","arguments":{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}}}' | node bin/mcp-server.js
+echo '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"analyze_position","arguments":{"fen":"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}}}' | node bin/mcp
 ```
 
 ## 🛠️ Development
@@ -537,121 +549,47 @@ npm start           # Start production server
 
 ## 📋 MCP Tools Reference
 
-### Analysis Tools
+### Server Management
 
-#### `analyze_position`
-Analyze a chess position using Stockfish engine.
+#### `launch_chess_trainer`
+Launch the Chess Trainer web server with optional browser opening.
 ```json
 {
-  "name": "analyze_position",
-  "arguments": {
-    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
-    "depth": 15
-  }
-}
-```
-
-#### `evaluate_move`
-Evaluate a chess move and get detailed analysis.
-```json
-{
-  "name": "evaluate_move", 
-  "arguments": {
-    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-    "move": "e2e4"
-  }
-}
-```
-
-#### `get_best_moves`
-Get the best moves for a given position.
-```json
-{
-  "name": "get_best_moves",
-  "arguments": {
-    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-    "count": 3
-  }
-}
-```
-
-#### `explain_opening`
-Explain a chess opening and its principles.
-```json
-{
-  "name": "explain_opening",
-  "arguments": {
-    "moves": ["e2e4", "e7e5", "Ng1f3"],
-    "opening_name": "King's Pawn Game"
-  }
-}
-```
-
-### Utility Tools
-
-#### `validate_fen`
-Validate a FEN string and provide position information.
-```json
-{
-  "name": "validate_fen",
-  "arguments": {
-    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
-  }
-}
-```
-
-#### `generate_pgn`
-Generate PGN from a list of moves.
-```json
-{
-  "name": "generate_pgn",
-  "arguments": {
-    "moves": ["e2e4", "e7e5", "Ng1f3", "Nb8c6"],
-    "white_player": "Player1",
-    "black_player": "Player2"
-  }
-}
-```
-
-### UI Management Tools
-
-#### `start_chess_ui`
-Start the Chess Trainer web UI interface.
-```json
-{
-  "name": "start_chess_ui",
+  "name": "launch_chess_trainer",
   "arguments": {
     "port": 3456,
-    "mode": "play"
+    "auto_open_browser": true
   }
 }
 ```
 
-#### `stop_chess_ui`
-Stop the Chess Trainer web UI server.
+#### `stop_chess_trainer`
+Stop the Chess Trainer web server.
 ```json
 {
-  "name": "stop_chess_ui",
+  "name": "stop_chess_trainer",
   "arguments": {
     "port": 3456
   }
 }
 ```
 
-#### `start_chess_game`
-Start a chess game and automatically open browser.
+### Game Management
+
+#### `create_game`
+Create a new chess game with specific settings.
 ```json
 {
-  "name": "start_chess_game",
+  "name": "create_game",
   "arguments": {
-    "port": 3456,
-    "mode": "play",
-    "auto_open": true
+    "game_id": "my-game",
+    "mode": "human_vs_ai",
+    "player_color": "white",
+    "ai_elo": 1500,
+    "ai_time_limit": 1000
   }
 }
 ```
-
-### Interactive Game Tools
 
 #### `list_active_games`
 List all currently active chess games.
@@ -668,10 +606,23 @@ Get the current state of a specific chess game.
 {
   "name": "get_game_state",
   "arguments": {
-    "game_id": "session_12345"
+    "game_id": "my-game"
   }
 }
 ```
+
+#### `reset_game`
+Reset a game to the starting position.
+```json
+{
+  "name": "reset_game",
+  "arguments": {
+    "game_id": "my-game"
+  }
+}
+```
+
+### Game Interaction
 
 #### `make_move`
 Make a move in an active chess game.
@@ -679,34 +630,193 @@ Make a move in an active chess game.
 {
   "name": "make_move",
   "arguments": {
-    "game_id": "session_12345",
+    "game_id": "my-game",
     "move": "e2e4"
   }
 }
 ```
 
-#### `suggest_move`
-Suggest the best move for current position in an active game.
+#### `suggest_best_move`
+Get the best move suggestion for the current position.
 ```json
 {
-  "name": "suggest_move",
+  "name": "suggest_best_move",
   "arguments": {
-    "game_id": "session_12345",
+    "game_id": "my-game",
     "depth": 12
   }
 }
 ```
 
-#### `reset_game`
-Reset an active chess game to starting position.
+### Analysis Tools
+
+#### `analyze_position`
+Analyze a chess position (currently returns simulated analysis).
 ```json
 {
-  "name": "reset_game",
+  "name": "analyze_position",
   "arguments": {
-    "game_id": "session_12345"
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "depth": 15
   }
 }
 ```
+
+#### `evaluate_move`
+Evaluate the quality of a chess move.
+```json
+{
+  "name": "evaluate_move",
+  "arguments": {
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "move": "e2e4"
+  }
+}
+```
+
+#### `get_best_moves`
+Get the top N best moves for a position.
+```json
+{
+  "name": "get_best_moves",
+  "arguments": {
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "count": 3
+  }
+}
+```
+
+### Utility Tools
+
+#### `validate_fen`
+Validate a FEN string and get position information.
+```json
+{
+  "name": "validate_fen",
+  "arguments": {
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+  }
+}
+```
+
+#### `generate_pgn`
+Generate PGN notation from a list of moves.
+```json
+{
+  "name": "generate_pgn",
+  "arguments": {
+    "moves": ["e4", "e5", "Nf3", "Nc6", "Bb5"],
+    "white_player": "Magnus Carlsen",
+    "black_player": "Hikaru Nakamura",
+    "event": "Online Blitz",
+    "date": "2025.06.27"
+  }
+}
+```
+
+#### `explain_opening`
+Get explanation and principles of a chess opening.
+```json
+{
+  "name": "explain_opening",
+  "arguments": {
+    "moves": ["e4", "e5", "Nf3", "Nc6", "Bb5"],
+    "opening_name": "Ruy Lopez"
+  }
+}
+```
+
+### 🌐 Iframe Embedding
+
+The Chess Trainer now supports iframe embedding, allowing you to integrate the chess board into any web application.
+
+#### `get_embeddable_url`
+Get an embeddable URL for iframe integration with customizable options.
+```json
+{
+  "name": "get_embeddable_url",
+  "arguments": {
+    "game_id": "my-game",
+    "mode": "minimal",
+    "width": 600,
+    "height": 600,
+    "allow_moves": true,
+    "show_controls": false
+  }
+}
+```
+
+**Parameters:**
+- `game_id`: ID of the game to embed
+- `mode`: UI mode - `"full"`, `"board-only"`, or `"minimal"`
+- `width`/`height`: Dimensions of the embedded view (300-1200)
+- `allow_moves`: Whether users can make moves in the embedded view
+- `show_controls`: Whether to show game controls (reset, flip, hint)
+
+**Example Usage:**
+```html
+<iframe 
+  src="http://localhost:3456/embed?game_id=my-game&mode=minimal&width=600&height=600&allow_moves=true&show_controls=false"
+  width="600"
+  height="600"
+  frameborder="0"
+  allow="fullscreen"
+  style="border: 1px solid #ccc; border-radius: 8px;"
+></iframe>
+```
+
+**PostMessage API:**
+The embedded chess board supports bidirectional communication via postMessage:
+
+```javascript
+// Send commands to the chess board
+iframe.contentWindow.postMessage({
+  type: 'chess_command',
+  command: 'move',
+  move: 'e2e4',
+  san: 'e4'
+}, '*');
+
+// Listen for events from the chess board
+window.addEventListener('message', (event) => {
+  if (event.data.type === 'chess_move') {
+    console.log('Move made:', event.data.move, event.data.san);
+  }
+});
+```
+
+**Supported Commands:**
+- `reset`: Reset the game to starting position
+- `flip`: Flip the board orientation
+- `move`: Make a move (requires move and optionally san)
+- `load_fen`: Load a specific position (requires fen)
+
+**Events from Chess Board:**
+- `chess_move`: Fired when a move is made
+- `request_hint`: Fired when hint button is clicked (if controls shown)
+
+## 📝 Changelog
+
+### Version 1.0.11 (Latest)
+- **Iframe Embedding Support**: New `get_embeddable_url` tool and `/embed` route for iframe integration
+- **PostMessage API**: Bidirectional communication between parent and embedded chess board
+- **Extended MCP Capabilities**: Added experimental embedding capability to MCP protocol
+- **Reorganized MCP Tools**: Streamlined from 16 to 15 tools with better categorization
+- **Improved Tool Names**: Clearer, more descriptive tool names (e.g., `suggest_move` → `suggest_best_move`)
+- **Enhanced Server Startup**: Better error handling and retry logic for `launch_chess_trainer`
+- **Added Proper Server Stop**: New `stop_chess_trainer` tool that actually stops the server
+- **Game Persistence**: Games now survive server restarts with automatic save/restore
+- **Auto-Save Feature**: Games automatically saved every 30 seconds
+- **Inactive Game Cleanup**: Games inactive for 24 hours are automatically archived
+- **Removed Redundant Tools**: Eliminated confusing tools like `start_chess_ui`, `stop_chess_ui`, `start_chess_game`
+- **Added Tool Categories**: Server Management, Game Management, Game Interaction, Analysis Tools, Utility Tools, Embedding Tools
+- **Fixed MCP SDK Integration**: Resolved Zod schema issues for proper tool registration
+- **Updated Documentation**: Comprehensive tool reference with examples and iframe embedding guide
+
+### Version 1.0.10
+- Major UI overhaul and feature enhancements
+- Multi-client support with unique client identification
+- Server-authoritative architecture implementation
 
 ## 📄 License
 
