@@ -2,52 +2,52 @@
   "test_game_123": {
     "gameId": "test_game_123",
     "active": true,
-    "startTime": "2025-06-25T02:13:42.167Z",
+    "startTime": "2025-06-27T04:53:52.051Z",
     "mode": "play",
     "moves": [
       {
         "san": "e4",
         "uci": "e2e4",
         "ply": 1,
-        "timestamp": "2025-06-25T02:13:43.704Z"
+        "timestamp": "2025-06-27T04:53:57.109Z"
       },
       {
-        "san": "c5",
-        "uci": "c7c5",
+        "san": "e5",
+        "uci": "e7e5",
         "ply": 2,
-        "timestamp": "2025-06-25T02:13:47.282Z"
+        "timestamp": "2025-06-27T04:53:58.138Z"
       },
       {
-        "san": "c4",
-        "uci": "c2c4",
+        "san": "d4",
+        "uci": "d2d4",
         "ply": 3,
-        "timestamp": "2025-06-25T02:14:00.621Z"
+        "timestamp": "2025-06-27T04:54:00.308Z"
       },
       {
-        "san": "e6",
-        "uci": "e7e6",
+        "san": "exd4",
+        "uci": "e5d4",
         "ply": 4,
-        "timestamp": "2025-06-25T02:14:01.648Z"
+        "timestamp": "2025-06-27T04:54:01.337Z"
       },
       {
-        "san": "Nf3",
-        "uci": "g1f3",
+        "san": "Qxd4",
+        "uci": "d1d4",
         "ply": 5,
-        "timestamp": "2025-06-25T02:14:05.189Z"
+        "timestamp": "2025-06-27T04:54:04.838Z"
       },
       {
-        "san": "d6",
-        "uci": "d7d6",
+        "san": "Nf6",
+        "uci": "g8f6",
         "ply": 6,
-        "timestamp": "2025-06-25T02:14:06.264Z"
+        "timestamp": "2025-06-27T04:54:05.872Z"
       }
     ],
-    "fen": "rnbqkbnr/pp3ppp/3pp3/2p5/2P1P3/5N2/PP1P1PPP/RNBQKB1R w KQkq - 0 4",
+    "fen": "rnbqkb1r/pppp1ppp/5n2/8/3QP3/8/PPP2PPP/RNB1KBNR w KQkq - 1 4",
     "turn": "white",
-    "lastUpdated": "2025-06-25T02:14:06.264Z",
+    "lastUpdated": "2025-06-27T04:54:05.872Z",
     "gameMode": "human_vs_ai",
     "playerColor": "white",
-    "aiEloRating": 2800,
+    "aiEloRating": 1500,
     "aiTimeLimit": 500
   },
   "user_vs_ai_1800": {

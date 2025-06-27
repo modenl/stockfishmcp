@@ -144,15 +144,13 @@ class StdioMCPServer {
       jsonrpc: '2.0',
       id: request.id,
       result: {
-        protocolVersion: '2024-11-05',
+        protocolVersion: '2025-06-18',
         capabilities: {
-          tools: {
-            listChanged: false
-          }
+          tools: this.mcpServer.tools
         },
         serverInfo: {
           name: 'chess-trainer-mcp',
-          version: '1.0.3'
+          version: '1.0.11'
         }
       }
     };

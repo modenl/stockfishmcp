@@ -1040,8 +1040,8 @@ class ChessTrainerServer {
 if (process.argv.includes('--mcp') || process.env.MCP_STDIO_MODE === 'true') {
   // Import and start MCP server
   import('../bin/mcp-server.js');
-} else if (import.meta.url === `file://${process.argv[1]}`) {
-  // Start regular HTTP server
+} else {
+  // Start regular HTTP server by default when this file is executed directly (including through nodemon)
   const port = process.env.PORT || 3456;
   const server = new ChessTrainerServer();
   server.start(port);
