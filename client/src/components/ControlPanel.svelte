@@ -146,17 +146,34 @@
       {t.newGame}
     </button>
     
-    {#if gameState.status === 'playing'}
+    {#if gameState.status === 'playing' || (gameState.status !== 'checkmate' && gameState.status !== 'stalemate' && gameState.status !== 'draw' && gameState.status !== 'ended')}
       <button 
-        class="btn btn-secondary" 
-        on:click={() => onEndGame('resign')}
+        class="btn btn-secondary resign-button" 
+        on:click={() => {
+          console.log('🔴 Resign button clicked');
+          console.log('🔴 onEndGame prop type:', typeof onEndGame);
+          console.log('🔴 onEndGame prop value:', onEndGame);
+          console.log('🔴 gameState.status:', gameState.status);
+          if (typeof onEndGame === 'function') {
+            console.log('🔴 Calling onEndGame("resign")');
+            onEndGame('resign');
+          } else {
+            console.error('🔴 onEndGame is not a function!');
+          }
+        }}
+        style="position: relative; z-index: 1000;"
       >
         {t.resign}
       </button>
-    {:else if gameState.status === 'checkmate' || gameState.status === 'stalemate' || gameState.status === 'draw'}
+    {:else if gameState.status === 'checkmate' || gameState.status === 'stalemate' || gameState.status === 'draw' || gameState.status === 'resigned'}
       <div class="game-over-message">
-        {#if gameState.status === 'checkmate'}
+        {#if gameState.status === 'checkmate' || gameState.status === 'resigned'}
           🏆 {getColorDisplayName(gameState.winner)} {t.wins || 'wins'}!
+          {#if gameState.status === 'resigned'}
+            <div style="font-size: 0.9em; margin-top: 4px;">
+              ({getColorDisplayName(gameState.winner === 'white' ? 'black' : 'white')} {t.resigned || 'resigned'})
+            </div>
+          {/if}
         {:else if gameState.status === 'stalemate'}
           🤝 {t.stalemate || 'Stalemate'} - {t.draw || 'Draw'}!
         {:else}
@@ -327,6 +344,33 @@
 
   .game-info {
     margin-bottom: var(--spacing-md);
+  }
+
+  .debug-section {
+    font-size: 0.8em;
+    color: var(--text-secondary);
+    margin: var(--spacing-sm) 0;
+    padding: var(--spacing-sm);
+    background: var(--surface-variant);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+  }
+
+  .debug-test-btn {
+    margin-top: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.8em;
+    transition: all 0.2s ease;
+  }
+
+  .debug-test-btn:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
   }
 
   .info-item {
@@ -504,6 +548,26 @@
   .btn-secondary:hover:not(:disabled) {
     background: #555;
   }
+  
+  .resign-button {
+    background: #d32f2f !important;
+    color: white !important;
+    border: 1px solid #b71c1c !important;
+    cursor: pointer !important;
+    pointer-events: auto !important;
+    position: relative !important;
+    z-index: 1000 !important;
+  }
+  
+  .resign-button:hover:not(:disabled) {
+    background: #f44336 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+  
+  .resign-button:active {
+    transform: translateY(0);
+  }
 
   .btn-warning {
     background: #ff9500;
@@ -583,6 +647,28 @@
 
   .file-upload-btn:hover:not(:disabled) {
     background: #3d6a3d;
+  }
+
+  /* Ensure resign button is clickable */
+  .resign-button {
+    cursor: pointer !important;
+    pointer-events: auto !important;
+    user-select: none;
+    background: #d32f2f !important;
+    color: white !important;
+    border: 1px solid #b71c1c !important;
+    font-weight: 600;
+  }
+
+  .resign-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(211, 47, 47, 0.3);
+    background: #b71c1c !important;
+  }
+
+  .resign-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(211, 47, 47, 0.2);
   }
 
   .analysis-result {

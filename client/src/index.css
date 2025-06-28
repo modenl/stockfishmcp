@@ -20,6 +20,15 @@
   
   /* Chess colors */
   
+  /* Component-specific aliases for backward compatibility */
+  --surface: #2d2d2d;
+  --surface-variant: #3a3a3a;
+  --surface-hover: #404040;
+  --text: #ffffff;
+  --text-secondary: #cccccc;
+  --primary: #4f9eff;
+  --primary-hover: #3d8bff;
+  
   /* Spacing */
   --spacing-xs: 0.25rem;
   --spacing-sm: 0.5rem;

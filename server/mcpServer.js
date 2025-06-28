@@ -1,6 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ListToolsRequestSchema, InitializeRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { gameStateManager } from './gameStateManager.js';
@@ -28,6 +28,7 @@ export class MCPServer {
       }
     );
 
+    this.serverInstance = null; // Store the Chess Trainer server instance
     this.initializeTools();
     this.setupHandlers();
   }
@@ -184,10 +185,9 @@ export class MCPServer {
       // Embedding Tools
       {
         name: 'get_embeddable_url',
-        description: 'Get an embeddable URL for iframe integration',
+        description: 'Get an embeddable URL for iframe integration of the current active game',
         inputSchema: zodToJsonSchema(
           z.object({
-            game_id: z.string().describe('Game ID to embed'),
             mode: z.enum(['full', 'board-only', 'minimal']).default('minimal').describe('UI mode for embedded view'),
             width: z.number().min(300).max(1200).default(600).describe('Width of the embedded view'),
             height: z.number().min(300).max(1200).default(600).describe('Height of the embedded view'),
@@ -195,11 +195,50 @@ export class MCPServer {
             show_controls: z.boolean().default(false).describe('Show game controls in embedded view')
           })
         )
+      },
+      
+      // PGN Loading Tools
+      {
+        name: 'load_pgn_for_replay',
+        description: 'Load a PGN file or text and trigger UI replay mode',
+        inputSchema: zodToJsonSchema(
+          z.object({
+            game_id: z.string().describe('Game ID to load PGN into'),
+            pgn: z.string().describe('PGN content as text'),
+            auto_play: z.boolean().default(true).describe('Automatically start playing through the moves'),
+            delay_ms: z.number().min(500).max(5000).default(2000).describe('Delay between moves in milliseconds')
+          })
+        )
       }
     ];
   }
 
   setupHandlers() {
+    // Handle initialization - start chess server automatically
+    this.server.setRequestHandler(InitializeRequestSchema, async (request) => {
+      console.error('🚀 MCP Server initializing...');
+      
+      try {
+        // Use existing launchChessTrainer tool to start the server
+        await this.launchChessTrainer({ auto_open_browser: false });
+        console.error('✅ MCP Server initialized with chess server running');
+        
+        // Return standard initialization response
+        return {
+          protocolVersion: request.params.protocolVersion,
+          capabilities: this.server.getCapabilities(),
+          serverInfo: {
+            name: 'chess-trainer-mcp',
+            version: '1.0.11'
+          },
+          instructions: 'Chess Trainer MCP Server is ready. The chess server has been automatically started on port 3456.'
+        };
+      } catch (error) {
+        console.error('❌ Failed to initialize MCP server:', error);
+        throw new Error(`Initialization failed: ${error.message}`);
+      }
+    });
+
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: this.tools,
     }));
@@ -213,7 +252,74 @@ export class MCPServer {
         throw new Error(`Tool execution failed: ${error.message}`);
       }
     });
+
+    // Handle server shutdown
+    this.setupShutdownHandlers();
   }
+
+  // 获取当前活跃的 game id
+  getCurrentActiveGameId() {
+    try {
+      const activeGames = gameStateManager.getAllActiveGames();
+      
+      if (activeGames.length === 0) {
+        return null;
+      }
+      
+      // 如果有多个活跃游戏，返回最近更新的那个
+      const sortedGames = activeGames.sort((a, b) => 
+        new Date(b.lastUpdated) - new Date(a.lastUpdated)
+      );
+      
+      return sortedGames[0].gameId;
+    } catch (error) {
+      console.error('Failed to get current active game ID:', error);
+      return null;
+    }
+  }
+
+  setupShutdownHandlers() {
+    // Handle graceful shutdown
+    const gracefulShutdown = async (signal) => {
+      console.error(`🛑 MCP Server received ${signal}, shutting down gracefully...`);
+      
+      try {
+        // Use existing stopChessTrainer tool to stop the server
+        await this.stopChessTrainer();
+        console.error('✅ Chess server stopped successfully');
+      } catch (error) {
+        console.error('⚠️ Error stopping chess server:', error);
+      }
+      
+      // Close MCP server
+      try {
+        this.server.close();
+        console.error('✅ MCP server closed successfully');
+      } catch (error) {
+        console.error('⚠️ Error closing MCP server:', error);
+      }
+      
+      process.exit(0);
+    };
+
+    // Register shutdown handlers for various signals
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGQUIT', () => gracefulShutdown('SIGQUIT'));
+    
+    // Handle uncaught exceptions
+    process.on('uncaughtException', async (error) => {
+      console.error('💥 Uncaught Exception:', error);
+      await gracefulShutdown('uncaughtException');
+    });
+
+    process.on('unhandledRejection', async (reason, promise) => {
+      console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+      await gracefulShutdown('unhandledRejection');
+    });
+  }
+
+
 
   async callTool(name, arguments_) {
     switch (name) {
@@ -258,6 +364,9 @@ export class MCPServer {
       // Embedding Tools
       case 'get_embeddable_url':
         return await this.getEmbeddableUrl(arguments_);
+      
+      case 'load_pgn_for_replay':
+        return await this.loadPgnForReplay(arguments_);
 
       default:
         throw new Error(`Unknown tool: ${name}`);
@@ -307,17 +416,22 @@ export class MCPServer {
     try {
       const { port = 3456, auto_open_browser = true } = args;
 
-      // Check if server is already running
+      // Check if server is already running (either from initialization or manual start)
       try {
         const testResponse = await fetch(`http://localhost:${port}/api/health`);
         if (testResponse.ok) {
+          const statusMessage = this.serverInstance ? 
+            'The server was automatically started during MCP initialization.' :
+            'The server is already running from a previous start.';
+            
           return {
             content: [{
               type: 'text',
               text: `✅ Chess Trainer Already Running!\n\n` +
                     `🌐 Web Interface: http://localhost:${port}\n` +
                     `🔗 WebSocket: ws://localhost:${port}/ws\n\n` +
-                    `The server is already active. You can:\n` +
+                    `${statusMessage}\n\n` +
+                    `You can:\n` +
                     `• Open http://localhost:${port} in your browser\n` +
                     `• Use 'create_game' to start a new game\n` +
                     `• Use 'list_active_games' to see current games`
@@ -328,12 +442,27 @@ export class MCPServer {
         // Server not running, continue to start it
       }
 
-      // Try direct server start first (more reliable for MCP context)
+      // Start the Chess Trainer server directly in the same process
       try {
-        const { startChessTrainerDirectly } = await import('./mcpServer-direct.js');
-        const result = await startChessTrainerDirectly(port);
+        const { ChessTrainerServer } = await import('./index.js');
         
-        if (result.success) {
+        // Create and initialize server
+        const server = new ChessTrainerServer();
+        await server.initialize();
+        
+        // Start the server
+        server.start(port);
+        
+        // Store server instance for later stopping
+        this.serverInstance = server;
+        
+        // Give it a moment to fully initialize
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Verify it's running
+        const response = await fetch(`http://localhost:${port}/api/health`);
+        
+        if (response.ok) {
           // Open browser if requested
           let browserMessage = '';
           if (auto_open_browser) {
@@ -350,106 +479,24 @@ export class MCPServer {
             content: [{
               type: 'text',
               text: `🚀 Chess Trainer Started Successfully!\n\n` +
-                    `🌐 Web Interface: ${result.url}\n` +
+                    `🌐 Web Interface: http://localhost:${port}\n` +
                     `🔗 WebSocket: ws://localhost:${port}/ws\n` +
                     browserMessage +
                     `\nThe server is now running. You can:\n` +
                     `• Use 'create_game' to start a new game\n` +
-                    `• Visit ${result.url} in your browser`
+                    `• Visit http://localhost:${port} in your browser`
             }]
           };
+        } else {
+          throw new Error('Server started but health check failed');
         }
       } catch (directStartError) {
         console.error('Direct start failed:', directStartError);
-        // Fall back to spawn method
+        // Don't fall back to spawn method - just report the error
+        throw new Error(`Failed to start Chess Trainer: ${directStartError.message}`);
       }
 
-      // Start the Chess Trainer server
-      const { spawn } = await import('child_process');
-      const path = await import('path');
-      const fs = await import('fs');
-      
-      const binPath = path.join(process.cwd(), 'bin', 'chess-trainer-mcp');
-      
-      // Check if binary exists
-      if (!fs.existsSync(binPath)) {
-        throw new Error(`Chess Trainer binary not found at ${binPath}`);
-      }
-      
-      // Start the server with output capture for debugging
-      const serverProcess = spawn('node', [binPath], {
-        cwd: process.cwd(),
-        detached: true,
-        stdio: ['ignore', 'pipe', 'pipe']
-      });
-      
-      // Capture any early errors
-      let startupError = '';
-      serverProcess.stderr?.on('data', (data) => {
-        startupError += data.toString();
-      });
-      
-      serverProcess.on('error', (err) => {
-        console.error('Failed to start server process:', err);
-      });
-
-      serverProcess.unref();
-
-      // Give server time to start with retry logic
-      let serverStarted = false;
-      const maxRetries = 10;
-      const retryDelay = 1000; // 1 second between retries
-      
-      for (let i = 0; i < maxRetries; i++) {
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
-        
-        try {
-          const healthCheck = await fetch(`http://localhost:${port}/api/health`);
-          if (healthCheck.ok) {
-            serverStarted = true;
-            break;
-          }
-        } catch (e) {
-          // Server not ready yet, continue retrying
-          if (i === maxRetries - 1) {
-            const errorMsg = `Server failed to start after ${maxRetries} attempts (${maxRetries * retryDelay / 1000} seconds)`;
-            if (startupError) {
-              throw new Error(`${errorMsg}\nStartup errors: ${startupError}`);
-            }
-            throw new Error(errorMsg);
-          }
-        }
-      }
-      
-      if (!serverStarted) {
-        throw new Error('Failed to verify server startup');
-      }
-
-      // Open browser if requested
-      let browserMessage = '';
-      if (auto_open_browser) {
-        try {
-          const open = (await import('open')).default;
-          await open(`http://localhost:${port}`);
-          browserMessage = '🌐 Browser opened automatically\n';
-        } catch (e) {
-          browserMessage = '⚠️  Could not open browser automatically\n';
-        }
-      }
-
-      return {
-        content: [{
-          type: 'text',
-          text: `🚀 Chess Trainer Started Successfully!\n\n` +
-                `🌐 Web Interface: http://localhost:${port}\n` +
-                `🔗 WebSocket: ws://localhost:${port}/ws\n` +
-                browserMessage +
-                `\nThe server is now running. You can:\n` +
-                `• Use 'create_game' to start a new game\n` +
-                `• Visit http://localhost:${port} in your browser\n\n` +
-                `Note: First startup may take longer as it builds the client interface.`
-        }]
-      };
+      // Removed spawn method - we only use direct start now
     } catch (error) {
       throw new Error(`Failed to launch Chess Trainer: ${error.message}`);
     }
@@ -459,21 +506,23 @@ export class MCPServer {
     try {
       const { port = 3456 } = args;
       
-      // First try the direct stop method if server was started directly
-      try {
-        const { stopChessTrainerDirectly } = await import('./mcpServer-direct.js');
-        const directResult = stopChessTrainerDirectly();
-        if (directResult.success) {
+      // First try to stop the server instance if we have it
+      if (this.serverInstance) {
+        try {
+          this.serverInstance.shutdown();
+          this.serverInstance = null;
           return {
             content: [{
               type: 'text',
-              text: `✅ ${directResult.message}\n\n` +
-                    `The Chess Trainer server has been stopped.`
+              text: `✅ Chess Trainer server stopped successfully\n\n` +
+                    `The server instance that was started during MCP initialization has been shut down.\n` +
+                    `Note: The server will be automatically restarted if the MCP server is restarted.`
             }]
           };
+        } catch (e) {
+          console.error('Failed to stop server instance:', e);
+          // Continue to system approach
         }
-      } catch (e) {
-        // Direct stop failed, try system approach
       }
 
       // Use system commands to stop server on port
@@ -847,13 +896,34 @@ export class MCPServer {
   async getEmbeddableUrl(args) {
     try {
       const {
-        game_id,
         mode = 'minimal',
         width = 600,
         height = 600,
         allow_moves = true,
         show_controls = false
       } = args;
+
+      // 自动获取当前活跃的 game id，如果没有就创建一个默认游戏
+      let game_id = this.getCurrentActiveGameId();
+      let wasAutoCreated = false;
+      
+      if (!game_id) {
+        console.error('🎯 No active game found, creating default game...');
+        
+        // 自动创建一个默认游戏
+        const defaultGameId = `auto_game_${Date.now()}`;
+        await this.createGame({
+          game_id: defaultGameId,
+          mode: 'human_vs_ai',
+          player_color: 'white',
+          ai_elo: 1500,
+          ai_time_limit: 1000
+        });
+        
+        game_id = defaultGameId;
+        wasAutoCreated = true;
+        console.error(`✅ Auto-created default game: ${game_id}`);
+      }
 
       // Check if server is running
       const port = 3456; // Default port, could be made configurable
@@ -894,6 +964,11 @@ export class MCPServer {
   style="border: 1px solid #ccc; border-radius: 8px;"
 ></iframe>`;
 
+      // 检查是否是在本次调用中自动创建的游戏
+      const gameStatusMessage = wasAutoCreated 
+        ? `🎯 Auto-created new game with default settings (Human vs AI, White pieces, 1500 ELO).`
+        : `🎯 Using current active chess game.`;
+
       return {
         content: [{
           type: 'text',
@@ -905,7 +980,8 @@ export class MCPServer {
                 `🎛️ Controls: ${show_controls ? 'Visible' : 'Hidden'}\n\n` +
                 `🔗 Embed URL:\n${embedUrl}\n\n` +
                 `📋 IFrame Code:\n\`\`\`html\n${iframeCode}\n\`\`\`\n\n` +
-                `💡 This URL can be embedded in any web application that supports iframes.`
+                `💡 This URL can be embedded in any web application that supports iframes.\n` +
+                `${gameStatusMessage}`
         }],
         // Include structured data for programmatic access
         data: {
@@ -925,6 +1001,81 @@ export class MCPServer {
       throw new Error(`Failed to generate embeddable URL: ${error.message}`);
     }
   }
+  
+  async loadPgnForReplay(args) {
+    try {
+      const { game_id, pgn, auto_play, delay_ms } = args;
+      
+      // Parse PGN to extract moves
+      const moves = this.parsePgnToMoves(pgn);
+      
+      if (moves.length === 0) {
+        return {
+          content: [{
+            type: 'text',
+            text: `❌ Failed to parse PGN\n\nNo valid moves found in the provided PGN.`
+          }]
+        };
+      }
+      
+      // Send to web server to trigger replay
+      const response = await this.proxyToWebServer('load_pgn_replay', {
+        game_id,
+        pgn,
+        moves,
+        auto_play,
+        delay_ms
+      });
+      
+      return {
+        content: [{
+          type: 'text',
+          text: `🎬 PGN Loaded for Replay\n\n` +
+                `📋 Game: ${game_id}\n` +
+                `♟️  Moves: ${moves.length}\n` +
+                `▶️  Auto-play: ${auto_play ? 'Yes' : 'No'}\n` +
+                `⏱️  Delay: ${delay_ms}ms\n\n` +
+                `${response.message || '✅ The game has been loaded and will start replaying in the UI.'}`
+        }]
+      };
+    } catch (error) {
+      return {
+        content: [{
+          type: 'text',
+          text: `❌ Failed to load PGN: ${error.message}`
+        }]
+      };
+    }
+  }
+  
+  parsePgnToMoves(pgn) {
+    // Simple PGN parser - extract moves
+    const moves = [];
+    
+    // Remove comments and variations
+    let cleanPgn = pgn.replace(/\{[^}]*\}/g, ''); // Remove comments
+    cleanPgn = cleanPgn.replace(/\([^)]*\)/g, ''); // Remove variations
+    
+    // Remove headers
+    cleanPgn = cleanPgn.replace(/\[[^\]]*\]/g, '');
+    
+    // Extract moves - split by spaces and filter
+    const tokens = cleanPgn.split(/\s+/);
+    
+    for (const token of tokens) {
+      // Skip empty tokens, move numbers, and results
+      if (!token || /^\d+\./.test(token) || /^(1-0|0-1|1\/2-1\/2|\*)$/.test(token)) {
+        continue;
+      }
+      
+      // This looks like a move
+      if (/^[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8][+#]?$|^O-O(-O)?[+#]?$/.test(token)) {
+        moves.push(token);
+      }
+    }
+    
+    return moves;
+  }
 
   async listTools() {
     return {
@@ -933,9 +1084,22 @@ export class MCPServer {
   }
 
   async run() {
+    // Ensure Chess Trainer server is running before accepting requests
+    try {
+      await this.launchChessTrainer({ auto_open_browser: false });
+    } catch (error) {
+      console.error('⚠️  Failed to launch Chess Trainer server on startup:', error.message);
+    }
+
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     console.error('Chess Trainer MCP Server running on stdio');
+    
+    // Handle transport close event
+    transport.onclose = async () => {
+      console.error('🔌 MCP transport closed, shutting down...');
+      await this.stopChessTrainer();
+    };
   }
 }
 

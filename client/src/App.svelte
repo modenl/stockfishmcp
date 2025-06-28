@@ -182,6 +182,34 @@
         // Handle error messages from server
         console.error(`[${clientName}] ❌ WebSocket error:`, message.message);
         break;
+      case 'pgn_replay_loaded':
+        // Handle PGN replay loaded from MCP
+        console.log(`[${clientName}] 🎬 PGN replay loaded:`, message);
+        if (message.gameId === sessionId) {
+          handlePgnReplayLoaded(message.moves, message.autoPlay, message.delayMs);
+        }
+        break;
+      case 'session_ended':
+        // Handle game end acknowledgment from server
+        console.log(`[${clientName}] 🏁 Session ended acknowledgment received`);
+        if (message.result) {
+          // Update local game state to reflect the resignation
+          if (message.result.reason === 'resignation') {
+            gameState.status = 'checkmate'; // Use checkmate status for UI consistency
+            gameState.winner = message.result.winner;
+            gameState.aiThinking = false;
+            
+            // Force update the reactive state
+            gameState = gameState;
+            updateGameState();
+            
+            console.log(`[${clientName}] 👑 ${message.result.winner} wins by resignation!`);
+          }
+        }
+        if (message.summary) {
+          console.log(`[${clientName}] 📊 Game summary:`, message.summary);
+        }
+        break;
       case 'session_state':
         // Handle session state updates
         console.log(`[${clientName}] 📊 Session state received:`, message);
@@ -621,6 +649,12 @@
   function checkGameStatus() {
     if (!game) return;
 
+    // Don't override status if game was resigned
+    if (gameState.status === 'checkmate' && gameState.winner && !game.isCheckmate()) {
+      console.log('🏁 Game already ended (resignation), keeping status');
+      return;
+    }
+
     if (game.isCheckmate()) {
       gameState.status = 'checkmate';
       gameState.winner = game.turn === 'white' ? 'black' : 'white';
@@ -700,11 +734,22 @@
   }
 
   function updateGameState() {
-    if (!game) return;
+    console.log('📊 updateGameState called');
+    if (!game) {
+      console.log('📊 No game object, returning');
+      return;
+    }
     const newFen = makeFen(game.toSetup());
     gameState.fen = newFen;
     gameState.turn = game.turn;
+    console.log('📊 Updated FEN:', newFen);
+    console.log('📊 Updated turn:', game.turn);
     checkGameStatus();
+    console.log('📊 Game status after check:', gameState.status);
+  }
+  
+  function getColorDisplayName(color) {
+    return color === 'white' ? t.white : t.black;
   }
 
   async function handleNewGame(mode, playerColor, aiElo, aiTimeLimit, syncToServer = true) {
@@ -759,24 +804,60 @@
   }
 
   function handleEndGame(reason) {
-    console.log('🏁 Ending game:', reason);
+    console.log('🏁 handleEndGame called with reason:', reason);
+    console.log('🏁 Current gameState:', gameState);
+    console.log('🏁 Current sessionId:', sessionId);
     
     if (reason === 'resign') {
+      console.log('🏁 Processing resignation...');
+      
       // Set the winner to the opponent
       const resigningColor = gameState.turn;
       gameState.winner = resigningColor === 'white' ? 'black' : 'white';
       gameState.status = 'checkmate'; // Use checkmate status for resign
       
       console.log(`👑 ${gameState.winner} wins by resignation!`);
+      console.log('🏁 Updated gameState:', gameState);
       
       // Clear any AI thinking state
       gameState.aiThinking = false;
+      
+      // Send resignation to server via WebSocket
+      console.log('🏁 Sending resignation to server...');
+      console.log('🏁 WebSocket store:', webSocketStore);
+      
+      try {
+        webSocketStore.sendMessage({
+          type: 'end_session',
+          sessionId: sessionId,
+          result: {
+            winner: gameState.winner,
+            reason: 'resignation'
+          }
+        });
+        console.log('🏁 Resignation message sent successfully');
+      } catch (error) {
+        console.error('🏁 Error sending resignation:', error);
+      }
       
       // Force update the reactive state
       gameState = gameState;
       
       // Update the game state
+      console.log('🏁 Calling updateGameState...');
       updateGameState();
+      console.log('🏁 handleEndGame completed');
+      
+      // Ensure we're not in replay mode
+      showReplayMode = false;
+      replayGameData = null;
+      
+      // Optional: Auto-start new game after a delay
+      // setTimeout(() => {
+      //   if (confirm(`${gameState.winner} wins by resignation! Start a new game?`)) {
+      //     handleNewGame(gameState.mode, gameState.playerColor, gameState.aiEloRating, gameState.aiTimeLimit);
+      //   }
+      // }, 1000);
     }
   }
   
@@ -990,6 +1071,55 @@
     showReplayMode = true;
   }
 
+  function handlePgnReplayLoaded(moves, autoPlay, delayMs) {
+    console.log('🎬 Starting PGN replay with', moves.length, 'moves');
+    
+    // Reset the game to starting position
+    game = Chess.default();
+    gameState.fen = makeFen(game.toSetup());
+    gameState.moves = [];
+    gameState.currentMoveIndex = -1;
+    gameState.turn = 'white';
+    gameState.status = 'playing';
+    updateGameState();
+    
+    // Convert SAN moves to our format
+    const replayMoves = [];
+    for (const sanMove of moves) {
+      try {
+        const move = parseSan(game, sanMove);
+        if (move) {
+          const uci = makeUci(move);
+          replayMoves.push({
+            san: sanMove,
+            uci: uci,
+            from: move.from,
+            to: move.to
+          });
+          // Apply move to game to continue parsing
+          game.play(move);
+        }
+      } catch (error) {
+        console.error('Failed to parse move:', sanMove, error);
+      }
+    }
+    
+    // Reset game again for replay
+    game = Chess.default();
+    updateGameState();
+    
+    // Set up replay data with auto-play settings
+    replayGameData = {
+      moves: replayMoves,
+      title: 'MCP载入的PGN复盘',
+      autoPlay: autoPlay,
+      delayMs: delayMs
+    };
+    
+    // Enter replay mode
+    showReplayMode = true;
+  }
+  
   function handleFileUpload(event) {
     console.log('📁 File upload event:', event);
     const file = event.target.files[0];
@@ -1178,6 +1308,33 @@
               <div class="ai-thinking-message">
                 <div class="ai-thinking-spinner"></div>
                 <span>AI正在思考...</span>
+              </div>
+            </div>
+          {/if}
+          
+          <!-- Game Over Overlay -->
+          {#if gameState.status === 'checkmate' || gameState.status === 'stalemate' || gameState.status === 'draw' || gameState.status === 'resigned'}
+            <div class="game-over-overlay">
+              <div class="game-over-message">
+                {#if gameState.status === 'checkmate' || gameState.status === 'resigned'}
+                  <h2>🏆 游戏结束</h2>
+                  <p>{getColorDisplayName(gameState.winner)} 获胜！</p>
+                  {#if gameState.status === 'resigned'}
+                    <p class="resign-info">{getColorDisplayName(gameState.winner === 'white' ? 'black' : 'white')} 认输</p>
+                  {/if}
+                {:else if gameState.status === 'stalemate'}
+                  <h2>🤝 和棋</h2>
+                  <p>逼和 - 没有合法着法</p>
+                {:else}
+                  <h2>🤝 和棋</h2>
+                  <p>游戏以平局结束</p>
+                {/if}
+                <button 
+                  class="btn btn-primary"
+                  on:click={handleShowNewGameModal}
+                >
+                  开始新游戏
+                </button>
               </div>
             </div>
           {/if}
