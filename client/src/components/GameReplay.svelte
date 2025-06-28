@@ -18,7 +18,7 @@
   let positions = [];
   let isPlaying = false;
   let playInterval = null;
-  let playSpeed = 1000;
+  let playSpeed = gameData?.delayMs || 1000;
   
   // 高级功能控制变量
   let showLastMove = true;
@@ -118,6 +118,16 @@
       });
 
       console.log('Game replay initialized successfully');
+      
+      // Check if auto-play is enabled
+      if (gameData?.autoPlay && moves.length > 0) {
+        console.log('🎬 Auto-play enabled, starting playback...');
+        console.log('📊 Auto-play settings:', { autoPlay: gameData.autoPlay, delayMs: gameData.delayMs });
+        // Small delay to ensure UI is ready
+        setTimeout(() => {
+          toggleAutoPlay();
+        }, 100);
+      }
     } catch (error) {
       console.error('Failed to initialize game replay:', error);
     }
@@ -161,12 +171,32 @@
       // 添加最后一步移动高亮
       if (moveIndex >= 0 && showLastMove && moves[moveIndex]) {
         const move = moves[moveIndex];
-        if (move.uci) {
-          const parsedMove = parseUci(move.uci);
-          // 使用 chessgroundMove 完美转换
-          config.lastMove = chessgroundMove(parsedMove);
-        } else if (move.from && move.to) {
-          config.lastMove = [move.from, move.to];
+        console.log('🔍 Processing move for lastMove highlight:', move);
+        
+        if (move.uci && typeof move.uci === 'string' && move.uci.length >= 4) {
+          try {
+            const from = move.uci.substring(0, 2);
+            const to = move.uci.substring(2, 4);
+            // 验证坐标格式
+            if (/^[a-h][1-8]$/.test(from) && /^[a-h][1-8]$/.test(to)) {
+              config.lastMove = [from, to];
+              console.log('✅ Set lastMove from UCI:', config.lastMove);
+            } else {
+              console.warn('❌ Invalid UCI coordinates:', from, to);
+            }
+          } catch (e) {
+            console.error('Error parsing UCI for lastMove:', e);
+          }
+        } else if (move.from && move.to && 
+                   typeof move.from === 'string' && 
+                   typeof move.to === 'string') {
+          // 验证坐标格式
+          if (/^[a-h][1-8]$/.test(move.from) && /^[a-h][1-8]$/.test(move.to)) {
+            config.lastMove = [move.from, move.to];
+            console.log('✅ Set lastMove from from/to:', config.lastMove);
+          } else {
+            console.warn('❌ Invalid from/to coordinates:', move.from, move.to);
+          }
         }
       } else {
         config.lastMove = undefined;
@@ -300,20 +330,38 @@
     const shapes = [];
     const move = moves[moveIndex];
     
-    if (move && move.from && move.to) {
-      // 添加移动箭头
-      shapes.push({
-        orig: move.from,
-        dest: move.to,
-        brush: 'green'
-      });
+    if (move) {
+      let from, to;
       
-      // 如果是吃子，标记被吃的格子
-      if (move.captured) {
+      // 从 UCI 或 from/to 属性中提取坐标
+      if (move.uci && typeof move.uci === 'string' && move.uci.length >= 4) {
+        from = move.uci.substring(0, 2);
+        to = move.uci.substring(2, 4);
+      } else if (move.from && move.to) {
+        from = move.from;
+        to = move.to;
+      }
+      
+      // 验证坐标格式
+      if (from && to && 
+          typeof from === 'string' && 
+          typeof to === 'string' &&
+          /^[a-h][1-8]$/.test(from) && 
+          /^[a-h][1-8]$/.test(to)) {
+        // 添加移动箭头
         shapes.push({
-          orig: move.to,
-          brush: 'red'
+          orig: from,
+          dest: to,
+          brush: 'green'
         });
+        
+        // 如果是吃子，标记被吃的格子
+        if (move.captured) {
+          shapes.push({
+            orig: to,
+            brush: 'red'
+          });
+        }
       }
     }
     

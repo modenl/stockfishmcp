@@ -1,41 +1,41 @@
 {
-  "test_game_123": {
-    "gameId": "test_game_123",
+  "auto_game_1751083736010": {
     "active": true,
-    "startTime": "2025-06-27T18:52:04.108Z",
+    "startTime": "2025-06-28T04:08:56.040Z",
     "mode": "play",
-    "moves": [
-      {
-        "san": "e4",
-        "uci": "e2e4",
-        "ply": 1,
-        "timestamp": "2025-06-27T18:52:15.322Z"
-      },
-      {
-        "san": "d5",
-        "uci": "d7d5",
-        "ply": 2,
-        "timestamp": "2025-06-27T18:52:16.335Z"
-      },
-      {
-        "san": "exd5",
-        "uci": "e4d5",
-        "ply": 3,
-        "timestamp": "2025-06-27T19:00:07.797Z"
-      },
-      {
-        "san": "e6",
-        "uci": "e7e6",
-        "ply": 4,
-        "timestamp": "2025-06-27T19:00:08.811Z"
-      }
-    ],
-    "fen": "rnbqkbnr/ppp2ppp/4p3/3P4/8/8/PPPP1PPP/RNBQKBNR w KQkq - 0 3",
+    "moves": [],
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     "turn": "white",
-    "lastUpdated": "2025-06-27T19:00:08.812Z",
+    "lastUpdated": "2025-06-28T06:05:13.470Z",
     "gameMode": "human_vs_ai",
     "playerColor": "white",
     "aiEloRating": 1500,
-    "aiTimeLimit": 500
+    "aiTimeLimit": 1000
+  },
+  "user_game_1": {
+    "active": true,
+    "startTime": "2025-06-28T04:25:21.796Z",
+    "mode": "play",
+    "moves": [],
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "turn": "white",
+    "lastUpdated": "2025-06-28T06:05:13.470Z",
+    "gameMode": "human_vs_ai",
+    "playerColor": "white",
+    "aiEloRating": 1100,
+    "aiTimeLimit": 5000
+  },
+  "test_game_123": {
+    "active": true,
+    "startTime": "2025-06-28T04:52:18.983Z",
+    "mode": "play",
+    "moves": [],
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "turn": "white",
+    "gameMode": "human_vs_human",
+    "playerColor": "white",
+    "aiEloRating": 1500,
+    "aiTimeLimit": 500,
+    "lastUpdated": "2025-06-28T06:05:13.471Z"
   }
 }
