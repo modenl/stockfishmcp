@@ -7,7 +7,6 @@ export default defineConfig({
   server: {
     port: 5173,
     headers: {
-      // Required for SharedArrayBuffer support in ffish
       'Cross-Origin-Embedder-Policy': 'require-corp',
       'Cross-Origin-Opener-Policy': 'same-origin'
     },
@@ -31,8 +30,7 @@ export default defineConfig({
     }
   },
   optimizeDeps: {
-    include: ['chessground', 'chessops/chess', 'chessops/fen', 'chessops/util', 'chessops/compat', 'chessops/san'],
-    exclude: ['ffish', 'fairy-stockfish-nnue.wasm']
+    include: ['chessground', 'chessops/chess', 'chessops/fen', 'chessops/util', 'chessops/compat', 'chessops/san']
   },
   worker: {
     format: 'es'

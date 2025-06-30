@@ -25,9 +25,8 @@ class ChessTrainerServer {
     this.wss = new WebSocketServer({ server: this.server });
     this.sessionManager = new SessionManager();
     this.mcpClient = new MCPClient();
-    this.clients = new Map(); // sessionId -> Set of client objects
+    this.clients = new Set(); // Set of client objects
     this.clientInfo = new Map(); // clientId -> client info
-    this.gameStates = new Map(); // gameId -> game state
     
     // Initialize game persistence
     this.gamePersistence = new GamePersistence(this);
@@ -35,8 +34,8 @@ class ChessTrainerServer {
     // Increase max listeners to prevent warning
     this.server.setMaxListeners(20);
     
-    // Load persisted game states
-    this.loadPersistedGames();
+    // Load persisted game state
+    this.loadPersistedGame();
   }
 
   async initialize() {
@@ -45,47 +44,77 @@ class ChessTrainerServer {
     this.setupWebSocket();
   }
 
-  loadPersistedGames() {
+  loadPersistedGame() {
     try {
-      const activeGames = gameStateManager.getAllActiveGames();
-      console.log(`Loading ${activeGames.length} persisted games...`);
-      
-      activeGames.forEach(game => {
-        const { gameId, ...gameState } = game;
-        this.gameStates.set(gameId, gameState);
-        console.log(`Loaded game: ${gameId} (${gameState.moves.length} moves)`);
-      });
+      const gameState = gameStateManager.getGameState();
+      if (gameState) {
+        console.log(`Loaded persisted game with ${gameState.moves.length} moves`);
+      } else {
+        console.log('No persisted game found, starting fresh');
+      }
     } catch (error) {
-      console.error('Failed to load persisted games:', error);
+      console.error('Failed to load persisted game:', error);
     }
   }
 
   async setupMiddleware() {
-    // Add headers to enable SharedArrayBuffer for Stockfish WASM
-    this.app.use((req, res, next) => {
-      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-      res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-      // Also set for static files
+    // Special handling for embed routes BEFORE helmet
+    this.app.use('/embed', (req, res, next) => {
+      // Override any restrictive headers for embed route
+      res.setHeader('X-Frame-Options', 'ALLOWALL');
+      res.setHeader('Content-Security-Policy', 
+        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+        "script-src * 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; " +
+        "worker-src * blob:; " +
+        "connect-src * ws: wss: http: https:; " +
+        "frame-ancestors http: https: file: *;"
+      );
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      // Add headers needed for SharedArrayBuffer in iframes
+      res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
       next();
     });
 
-    this.app.use(helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
-          workerSrc: ["'self'", "blob:"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          imgSrc: ["'self'", "data:", "blob:"],
-          connectSrc: ["'self'", "ws:", "wss:"]
-        }
-      },
-      crossOriginOpenerPolicy: false, // Disable helmet's COOP to use our custom one
-      crossOriginEmbedderPolicy: false // Disable helmet's COEP to use our custom one
-    }));
+    // Add headers to enable SharedArrayBuffer for Stockfish WASM
+    this.app.use((req, res, next) => {
+      // For non-embed routes
+      if (!req.path.startsWith('/embed')) {
+        res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+        res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      }
+      next();
+    });
+
+    // Apply helmet only to non-embed routes
+    this.app.use((req, res, next) => {
+      if (req.path.startsWith('/embed')) {
+        // Skip helmet for embed routes
+        next();
+      } else {
+        helmet({
+          contentSecurityPolicy: {
+            directives: {
+              defaultSrc: ["'self'"],
+              scriptSrc: ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
+              workerSrc: ["'self'", "blob:"],
+              styleSrc: ["'self'", "'unsafe-inline'"],
+              imgSrc: ["'self'", "data:", "blob:"],
+              connectSrc: ["'self'", "ws:", "wss:"]
+            }
+          },
+          crossOriginOpenerPolicy: false,
+          crossOriginEmbedderPolicy: false,
+          frameguard: false
+        })(req, res, next);
+      }
+    });
     
-    this.app.use(cors());
+    this.app.use(cors({
+      origin: true, // Allow all origins
+      credentials: true
+    }));
     this.app.use(express.json());
     
     // Configure static file serving with proper CORP headers
@@ -102,10 +131,11 @@ class ChessTrainerServer {
         changeOrigin: true,
         ws: false, // Don't proxy websockets (we handle those)
         pathFilter: (pathname, req) => {
-          // Don't proxy API routes, WebSocket routes, or our specific endpoints
+          // Don't proxy API routes, WebSocket routes, embed routes, or our specific endpoints
           return !pathname.startsWith('/api') && 
                  !pathname.startsWith('/ws') && 
-                 !pathname.startsWith('/socket.io');
+                 !pathname.startsWith('/socket.io') &&
+                 !pathname.startsWith('/embed');
         },
         onProxyReq: (proxyReq, req, res) => {
           // Add required headers for SharedArrayBuffer support
@@ -122,14 +152,33 @@ class ChessTrainerServer {
     } else {
       // In production mode, serve built static files
       this.app.use(express.static(path.join(__dirname, '../client/dist'), {
-        setHeaders: (res, path) => {
+        setHeaders: (res, filepath, stat) => {
           res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+          
+          // Special handling for stockfish/WASM files
+          if (filepath.includes('/nnue/') || filepath.endsWith('.wasm')) {
+            res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+            res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+          }
+          
+          // Special handling for HTML files when accessed via /embed
+          if (filepath.endsWith('index.html')) {
+            res.setHeader('X-Frame-Options', 'ALLOWALL');
+            res.setHeader('Content-Security-Policy', 
+              "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+              "script-src * 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; " +
+              "worker-src * blob:; " +
+              "connect-src * ws: wss: http: https:; " +
+              "frame-ancestors http: https: file: *;"
+            );
+          }
+          
           // Special handling for WASM files
-          if (path.endsWith('.wasm')) {
+          if (filepath.endsWith('.wasm')) {
             res.setHeader('Content-Type', 'application/wasm');
           }
           // Special handling for JS files
-          if (path.endsWith('.js')) {
+          if (filepath.endsWith('.js')) {
             res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
           }
         }
@@ -181,35 +230,31 @@ class ChessTrainerServer {
     });
 
     // MCP Proxy API endpoints
-    this.app.post('/api/mcp/list_active_games', (req, res) => {
+    this.app.post('/api/mcp/get_current_game', (req, res) => {
       try {
-        const activeGames = gameStateManager.getAllActiveGames();
+        const gameState = gameStateManager.getGameState();
         
-        if (activeGames.length === 0) {
+        if (!gameState || !gameState.active) {
           return res.json({
-            message: `📋 No Active Chess Games\n\n` +
-                    `🎯 No chess games are currently running.\n` +
+            message: `📋 No Active Chess Game\n\n` +
+                    `🎯 No chess game is currently running.\n` +
                     `💡 Start a new game by opening the web interface.`
           });
         }
 
-        const gamesList = activeGames.map(game => {
-          const moveCount = game.moves ? game.moves.length : 0;
-          const lastMove = game.moves && game.moves.length > 0 ? game.moves[game.moves.length - 1] : null;
-          
-          return `🎮 Game ID: ${game.gameId}\n` +
-                 `   📅 Started: ${new Date(game.startTime).toLocaleString()}\n` +
-                 `   🎯 Mode: ${game.mode || 'play'}\n` +
-                 `   ♟️  Moves: ${moveCount}\n` +
-                 `   🎲 Current turn: ${game.turn || 'white'}\n` +
-                 `   ${lastMove ? `🏃 Last move: ${lastMove.san || lastMove.move}` : '🆕 No moves yet'}\n` +
-                 `   📍 Position: ${game.fen ? game.fen.substring(0, 20) + '...' : 'starting position'}`;
-        }).join('\n\n');
-
+        const moveCount = gameState.moves ? gameState.moves.length : 0;
+        const lastMove = gameState.moves && gameState.moves.length > 0 ? gameState.moves[gameState.moves.length - 1] : null;
+        
         res.json({
-          message: `📋 Active Chess Games (${activeGames.length})\n\n${gamesList}\n\n` +
-                  `💡 Use get_game_state <game_id> for detailed information\n` +
-                  `💡 Use make_move <game_id> <move> to make a move`
+          message: `🎮 Current Chess Game\n` +
+                  `   📅 Started: ${new Date(gameState.startTime).toLocaleString()}\n` +
+                  `   🎯 Mode: ${gameState.mode || 'play'}\n` +
+                  `   ♟️  Moves: ${moveCount}\n` +
+                  `   🎲 Current turn: ${gameState.turn || 'white'}\n` +
+                  `   ${lastMove ? `🏃 Last move: ${lastMove.san || lastMove.move}` : '🆕 No moves yet'}\n` +
+                  `   📍 Position: ${gameState.fen ? gameState.fen.substring(0, 20) + '...' : 'starting position'}\n\n` +
+                  `💡 Use get_game_state for detailed information\n` +
+                  `💡 Use make_move <move> to make a move`
         });
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -218,21 +263,18 @@ class ChessTrainerServer {
 
     this.app.post('/api/mcp/get_game_state', (req, res) => {
       try {
-        const { game_id } = req.body;
-        
         console.log('\n=== 📊 GET_GAME_STATE REQUEST ===');
-        console.log('🎮 Game ID:', game_id);
         console.log('⏰ Timestamp:', new Date().toISOString());
         
-        const gameState = gameStateManager.getGameState(game_id);
+        const gameState = gameStateManager.getGameState();
 
         if (!gameState) {
-          console.log('❌ Game not found:', game_id);
+          console.log('❌ No game state found');
           console.log('=== ❌ GET_GAME_STATE FAILED ===\n');
           return res.json({
-            message: `❌ Game Not Found\n\n` +
-                    `🎯 Game ID "${game_id}" does not exist or is no longer active.\n` +
-                    `💡 Use list_active_games to see available games.`
+            message: `❌ No Game Found\n\n` +
+                    `🎯 No chess game exists.\n` +
+                    `💡 Start a new game to begin playing.`
           });
         }
 
@@ -254,7 +296,7 @@ class ChessTrainerServer {
         console.log('=== ✅ GET_GAME_STATE COMPLETED ===\n');
 
         res.json({
-          message: `🎮 Game State: ${game_id}\n\n` +
+          message: `🎮 Current Game State\n\n` +
                   `📅 Started: ${new Date(gameState.startTime).toLocaleString()}\n` +
                   `🎯 Mode: ${gameState.mode || 'play'}\n` +
                   `🎲 Current turn: ${gameState.turn || 'white'}\n` +
@@ -262,8 +304,8 @@ class ChessTrainerServer {
                   `📍 Current FEN: ${gameState.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'}\n` +
                   `📊 Status: ${gameState.active ? '🟢 Active' : '🔴 Ended'}\n\n` +
                   `📝 Move History:\n${moveHistory}\n\n` +
-                  `💡 Use make_move ${game_id} <move> to make a move\n` +
-                  `💡 Use suggest_move ${game_id} for AI suggestions`
+                  `💡 Use make_move <move> to make a move\n` +
+                  `💡 Use suggest_move for AI suggestions`
         });
       } catch (error) {
         console.error('❌ Get game state error:', error);
@@ -273,27 +315,18 @@ class ChessTrainerServer {
 
     this.app.post('/api/mcp/make_move', async (req, res) => {
       try {
-        const { game_id, move } = req.body;
+        const { move } = req.body;
         
         console.log('\n=== 📥 MAKE_MOVE REQUEST ===');
-        console.log('🎮 Game ID:', game_id);
         console.log('♟️  Move:', move);
         console.log('⏰ Timestamp:', new Date().toISOString());
         
-        // 获取或创建游戏状态
-        let gameState = gameStateManager.getGameState(game_id);
+        // 获取游戏状态
+        let gameState = gameStateManager.getGameState();
         if (!gameState) {
-          console.log('🆕 Creating new game state for:', game_id);
+          console.log('🆕 Creating new game state');
           // 创建新游戏状态
-          gameState = {
-            gameId: game_id,
-            active: true,
-            startTime: new Date().toISOString(),
-            mode: 'play',
-            moves: [],
-            fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-            turn: 'white'
-          };
+          gameState = gameStateManager.resetGame();
         } else {
           console.log('📊 Current game state before move:');
           console.log('   📍 FEN:', gameState.fen);
@@ -374,7 +407,7 @@ class ChessTrainerServer {
         });
         gameState.fen = newFen;
         gameState.turn = turn;
-        gameStateManager.saveGameState(game_id, gameState);
+        gameStateManager.saveGameState(gameState);
 
         console.log('💾 Updated game state saved:');
         console.log('   ♟️  Total moves:', gameState.moves.length);
@@ -385,13 +418,11 @@ class ChessTrainerServer {
         // 通过WebSocket广播更新到所有客户端
         console.log('📡 Broadcasting move to all clients via WebSocket:', {
           type: 'mcp_move',
-          sessionId: game_id,
           ...moveData
         });
         
-        this.broadcastToSession(game_id, {
+        this.broadcastToAll({
           type: 'mcp_move',
-          sessionId: game_id,
           ...moveData
         });
 
@@ -399,12 +430,11 @@ class ChessTrainerServer {
 
         res.json({
           message: `✅ Move Made Successfully!\n\n` +
-                  `🎮 Game: ${game_id}\n` +
                   `♟️  Move: ${san} (${move})\n` +
                   `🎲 Next turn: ${turn}\n` +
                   `📍 New position: ${newFen}\n\n` +
                   `💡 Move has been applied and broadcasted to web interface\n` +
-                  `💡 Use get_game_state ${game_id} to see updated state`
+                  `💡 Use get_game_state to see updated state`
         });
       } catch (error) {
         console.error('❌ Make move error:', error);
@@ -414,14 +444,14 @@ class ChessTrainerServer {
 
     this.app.post('/api/mcp/suggest_move', async (req, res) => {
       try {
-        const { game_id, depth = 12 } = req.body;
-        const gameState = gameStateManager.getGameState(game_id);
+        const { depth = 12 } = req.body;
+        const gameState = gameStateManager.getGameState();
         
         if (!gameState) {
           return res.json({
-            message: `❌ Game Not Found\n\n` +
-                    `🎯 Game ID "${game_id}" does not exist.\n` +
-                    `💡 Use list_active_games to see available games.`
+            message: `❌ No Game Found\n\n` +
+                    `🎯 No chess game exists.\n` +
+                    `💡 Start a new game to begin playing.`
           });
         }
 
@@ -437,14 +467,14 @@ class ChessTrainerServer {
         const suggestion = suggestions[0]; // 简化：总是返回第一个建议
 
         res.json({
-          message: `🤖 Move Suggestion for Game ${game_id}\n\n` +
+          message: `🤖 Move Suggestion\n\n` +
                   `📍 Current position: ${currentFen}\n` +
                   `🎲 Turn: ${gameState.turn || 'white'}\n` +
                   `🎯 Depth: ${depth}\n\n` +
                   `💡 Recommended move: ${suggestion.move}\n` +
                   `📊 Evaluation: ${suggestion.eval}\n` +
                   `💭 Description: ${suggestion.description}\n\n` +
-                  `💡 To make this move: make_move ${game_id} ${suggestion.move}`
+                  `💡 To make this move: make_move ${suggestion.move}`
         });
       } catch (error) {
         res.status(500).json({ error: error.message });
@@ -453,17 +483,25 @@ class ChessTrainerServer {
 
     this.app.post('/api/mcp/load_pgn_replay', (req, res) => {
       try {
-        const { game_id, pgn, moves, auto_play, delay_ms } = req.body;
+        const { pgn, moves, auto_play, delay_ms } = req.body;
         
         console.log('🎬 LOAD_PGN_REPLAY REQUEST');
-        console.log('📋 Game ID:', game_id);
         console.log('♟️  Moves:', moves.length);
         console.log('▶️  Auto-play:', auto_play);
         console.log('⏱️  Delay:', delay_ms);
         
+        // First, notify clients to stop any existing replay
+        const currentGameState = gameStateManager.getGameState();
+        if (currentGameState && currentGameState.mode === 'replay') {
+          console.log('🛑 Stopping existing replay before starting new one');
+          this.broadcastToAll({
+            type: 'stop_replay',
+            message: 'Stopping current replay to load new one'
+          });
+        }
+        
         // Reset game state
         const gameState = {
-          gameId: game_id,
           active: true,
           startTime: new Date().toISOString(),
           mode: 'replay',
@@ -480,15 +518,15 @@ class ChessTrainerServer {
           }
         };
         
-        gameStateManager.saveGameState(game_id, gameState);
+        gameStateManager.saveGameState(gameState);
         
         // Broadcast to all clients to start replay
-        this.broadcastToSession(game_id, {
+        this.broadcastToAll({
           type: 'pgn_replay_loaded',
-          gameId: game_id,
           moves,
           autoPlay: auto_play,
-          delayMs: delay_ms
+          delayMs: delay_ms,
+          gameId: '*' // Broadcast to all sessions
         });
         
         res.json({
@@ -502,15 +540,14 @@ class ChessTrainerServer {
     
     this.app.post('/api/mcp/reset_game', (req, res) => {
       try {
-        const { game_id, gameSettings } = req.body;
+        const { gameSettings } = req.body;
         
         console.log('\n=== 🔄 RESET_GAME REQUEST ===');
-        console.log('🎮 Game ID:', game_id);
         console.log('⚙️ Game Settings:', gameSettings);
         console.log('⏰ Timestamp:', new Date().toISOString());
         
         // 记录重置前的状态
-        const oldGameState = gameStateManager.getGameState(game_id);
+        const oldGameState = gameStateManager.getGameState();
         if (oldGameState) {
           console.log('📊 Game state before reset:');
           console.log('   📍 FEN:', oldGameState.fen);
@@ -526,7 +563,6 @@ class ChessTrainerServer {
         
         // 重置游戏状态，保留客户端传来的设置
         const gameState = {
-          gameId: game_id,
           active: true,
           startTime: new Date().toISOString(),
           mode: 'play',
@@ -541,7 +577,7 @@ class ChessTrainerServer {
           aiTimeLimit: gameSettings?.aiTimeLimit || 500
         };
 
-        gameStateManager.saveGameState(game_id, gameState);
+        gameStateManager.saveGameState(gameState);
 
         console.log('💾 New game state after reset:');
         console.log('   📍 FEN:', gameState.fen);
@@ -551,10 +587,9 @@ class ChessTrainerServer {
         console.log('   🎨 Player color:', gameState.playerColor);
         console.log('   🤖 AI ELO:', gameState.aiEloRating);
 
-        // 广播重置到会话中的所有客户端
+        // 广播重置到所有客户端
         const resetMessage = {
           type: 'mcp_game_reset',
-          gameId: game_id,
           fen: gameState.fen,
           turn: gameState.turn,
           gameSettings: {
@@ -565,20 +600,19 @@ class ChessTrainerServer {
           }
         };
 
-        console.log('📡 Broadcasting reset to all clients in session:', resetMessage);
+        console.log('📡 Broadcasting reset to all clients:', resetMessage);
 
-        this.broadcastToSession(game_id, resetMessage);
+        this.broadcastToAll(resetMessage);
 
         console.log('=== ✅ RESET_GAME COMPLETED ===\n');
 
         res.json({
           message: `✅ Game Reset Successfully!\n\n` +
-                  `🎮 Game: ${game_id}\n` +
                   `📍 Position reset to starting position\n` +
                   `🎲 Turn: White to move\n` +
                   `⏳ Reset has been applied and broadcasted to web interface\n\n` +
-                  `💡 Check game state with: get_game_state ${game_id}\n` +
-                  `💡 Make the first move with: make_move ${game_id} e2e4`
+                  `💡 Check game state with: get_game_state\n` +
+                  `💡 Make the first move with: make_move e2e4`
         });
       } catch (error) {
         console.error('❌ Reset game error:', error);
@@ -588,6 +622,17 @@ class ChessTrainerServer {
 
     // Embed route: serve main index.html so UI is identical
     this.app.get('/embed', (req, res) => {
+      // Set headers explicitly for embed route
+      res.setHeader('X-Frame-Options', 'ALLOWALL');
+      res.setHeader('Content-Security-Policy', 
+        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
+        "script-src * 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; " +
+        "worker-src * blob:; " +
+        "connect-src * ws: wss: http: https:; " +
+        "frame-ancestors http: https: file: *;"
+      );
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      
       res.sendFile(path.join(__dirname, '../client/dist/index.html'));
     });
 
@@ -628,33 +673,24 @@ class ChessTrainerServer {
         // Clean up client mappings
         let removedClient = null;
         
-        // Find and remove the client from all sessions
-        for (const [sessionId, clientSet] of this.clients.entries()) {
-          for (const client of clientSet) {
-            if (client.ws === ws) {
-              removedClient = client;
-              clientSet.delete(client);
-              
-              // Remove empty session sets
-              if (clientSet.size === 0) {
-                this.clients.delete(sessionId);
-              }
-              
-              // Remove from client info
-              this.clientInfo.delete(client.clientId);
-              
-              // Broadcast client left to remaining clients in session
-              this.broadcastToSession(sessionId, {
-                type: 'client_left',
-                clientId: client.clientId,
-                clientName: client.clientName,
-                sessionId: sessionId
-              });
-              
-              break;
-            }
+        // Find and remove the client
+        for (const client of this.clients) {
+          if (client.ws === ws) {
+            removedClient = client;
+            this.clients.delete(client);
+            
+            // Remove from client info
+            this.clientInfo.delete(client.clientId);
+            
+            // Broadcast client left to remaining clients
+            this.broadcastToAll({
+              type: 'client_left',
+              clientId: client.clientId,
+              clientName: client.clientName
+            });
+            
+            break;
           }
-          if (removedClient) break;
         }
         
         console.log('WebSocket connection closed');
@@ -664,9 +700,9 @@ class ChessTrainerServer {
 
   async handleWebSocketMessage(ws, message) {
     console.log('📨 SERVER: Received WebSocket message:', message);
-    const { type, sessionId, clientId, clientName } = message;
+    const { type, clientId, clientName } = message;
 
-    console.log(`📨 SERVER: Processing message type: ${type} for session: ${sessionId}`);
+    console.log(`📨 SERVER: Processing message type: ${type}`);
     
     switch (type) {
       case 'join_session':
@@ -675,63 +711,33 @@ class ChessTrainerServer {
           ws: ws,
           clientId: clientId,
           clientName: clientName,
-          sessionId: sessionId,
           joinedAt: new Date().toISOString()
         };
         
-        // Add to session clients
-        if (!this.clients.has(sessionId)) {
-          this.clients.set(sessionId, new Set());
-        }
-        this.clients.get(sessionId).add(client);
+        // Add to clients set
+        this.clients.add(client);
         
         // Store client info
         this.clientInfo.set(clientId, client);
         
-        console.log(`👋 Client joined: ${clientName} (${clientId}) in session ${sessionId}`);
+        console.log(`👋 Client joined: ${clientName} (${clientId})`);
         
-        // Broadcast to other clients in session
-        this.broadcastToSession(sessionId, {
+        // Broadcast to other clients
+        this.broadcastToAll({
           type: 'client_joined',
           clientId: clientId,
-          clientName: clientName,
-          sessionId: sessionId
-        });
+          clientName: clientName
+        }, ws);
         
-        const session = this.sessionManager.getSession(sessionId);
-        
-        // Get existing game state first
-        let gameState = gameStateManager.getGameState(sessionId);
+        // Get existing game state
+        let gameState = gameStateManager.getGameState();
         
         // Only create new game state if none exists
         if (!gameState) {
-          console.log(`Creating new game state for session: ${sessionId}`);
-          gameState = {
-            gameId: sessionId,
-            active: true,
-            startTime: new Date().toISOString(),
-            mode: 'play',
-            moves: [],
-            fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-            turn: 'white',
-            // Initialize with default game mode information
-            gameMode: 'human_vs_human',
-            playerColor: 'white',
-            aiEloRating: 1500,
-            aiTimeLimit: 500
-          };
-          gameStateManager.saveGameState(sessionId, gameState);
+          console.log(`Creating new game state`);
+          gameState = gameStateManager.resetGame();
         } else {
-          console.log(`Found existing game state for session: ${sessionId}, moves: ${gameState.moves?.length || 0}`);
-          // Ensure existing game state has mode information (for backward compatibility)
-          if (!gameState.gameMode) {
-            gameState.gameMode = 'human_vs_human';
-            gameState.playerColor = 'white';
-            gameState.aiEloRating = 1500;
-            gameState.aiTimeLimit = 500;
-            gameStateManager.saveGameState(sessionId, gameState);
-            console.log(`Added missing game mode info to existing session: ${sessionId}`);
-          }
+          console.log(`Found existing game state, moves: ${gameState.moves?.length || 0}`);
         }
         
         console.log('📤 Sending session_state with gameState:', {
@@ -741,12 +747,11 @@ class ChessTrainerServer {
           moves: gameState.moves?.length || 0
         });
         
-        // Get current clients in session
-        const connectedClients = this.getSessionClients(sessionId);
+        // Get current clients
+        const connectedClients = this.getAllClients();
         
         ws.send(JSON.stringify({
           type: 'session_state',
-          session: session || null,
           gameState: gameState
         }));
         
@@ -790,88 +795,63 @@ class ChessTrainerServer {
   }
 
   async handleMove(ws, message) {
-    const { sessionId, move, fenBefore, fenAfter, evalCp, depth, timeMs } = message;
+    const { move, fenBefore, fenAfter, evalCp, depth, timeMs } = message;
     
-    const moveRecord = this.sessionManager.addMove(sessionId, {
+    // 同步到游戏状态管理器
+    let gameState = gameStateManager.getGameState();
+    if (!gameState) {
+      gameState = gameStateManager.resetGame();
+    }
+
+    gameState.moves.push({
       san: move.san,
       uci: move.uci,
-      fenBefore,
-      fenAfter,
+      ply: gameState.moves.length + 1,
+      timestamp: new Date().toISOString(),
       evalCp,
       depth,
-      timeMs,
-      clock: Date.now()
+      timeMs
     });
+    gameState.fen = fenAfter;
+    gameState.turn = fenAfter.includes(' w ') ? 'white' : 'black';
+    gameState.lastUpdated = new Date().toISOString();
 
-    if (moveRecord) {
-      // 同步到游戏状态管理器
-      const gameState = gameStateManager.getGameState(sessionId) || {
-        gameId: sessionId,
-        active: true,
-        startTime: new Date().toISOString(),
-        mode: 'play',
-        moves: [],
-        fen: fenBefore,
-        turn: fenBefore.includes(' w ') ? 'white' : 'black',
-        // Initialize with default game mode information
-        gameMode: 'human_vs_human',
-        playerColor: 'white',
-        aiEloRating: 1500,
-        aiTimeLimit: 500
-      };
+    gameStateManager.saveGameState(gameState);
 
-      gameState.moves.push({
+    // Broadcast move to all clients
+    const updateMessage = {
+      type: 'move_update',
+      move: {
         san: move.san,
         uci: move.uci,
-        ply: moveRecord.ply,
-        timestamp: new Date().toISOString(),
+        ply: gameState.moves.length
+      },
+      fen: fenAfter
+    };
+    
+    this.broadcastToAll(updateMessage);
+
+    // Send MCP action for significant moves (every 3rd move or eval change > 50cp)
+    if (gameState.moves.length % 3 === 0 || Math.abs(evalCp) > 50) {
+      await this.mcpClient.sendEvaluateMove({
+        ply: gameState.moves.length,
+        move: move.uci,
+        fenBefore,
+        fenAfter,
         evalCp,
         depth,
         timeMs
       });
-      gameState.fen = fenAfter;
-      gameState.turn = fenAfter.includes(' w ') ? 'white' : 'black';
-      gameState.lastUpdated = new Date().toISOString();
-
-      gameStateManager.saveGameState(sessionId, gameState);
-
-      // Broadcast move to all clients in session
-      const updateMessage = JSON.stringify({
-        type: 'move_update',
-        sessionId,
-        move: moveRecord,
-        fen: fenAfter
-      });
-      
-      const client = this.clients.get(sessionId);
-      if (client) {
-        client.send(updateMessage);
-      }
-
-      // Send MCP action for significant moves (every 3rd move or eval change > 50cp)
-      if (moveRecord.ply % 3 === 0 || Math.abs(evalCp) > 50) {
-        await this.mcpClient.sendEvaluateMove({
-          sessionId,
-          ply: moveRecord.ply,
-          move: move.uci,
-          fenBefore,
-          fenAfter,
-          evalCp,
-          depth,
-          timeMs
-        });
-      }
     }
   }
 
   async handleAnalysisRequest(ws, message) {
-    const { sessionId, fen, depth = 15 } = message;
+    const { fen, depth = 15 } = message;
     
     // In a real implementation, this might trigger deeper analysis
     // For now, just acknowledge the request
     ws.send(JSON.stringify({
       type: 'analysis_started',
-      sessionId,
       fen,
       depth
     }));
@@ -879,65 +859,53 @@ class ChessTrainerServer {
 
   async handleEndSession(ws, message) {
     console.log('🏁 SERVER: handleEndSession called with message:', message);
-    const { sessionId, result } = message;
+    const { result } = message;
     
-    console.log('🏁 SERVER: Ending session:', sessionId, 'with result:', result);
+    console.log('🏁 SERVER: Ending game with result:', result);
     
-    const summary = this.sessionManager.endSession(sessionId, result);
-    console.log('🏁 SERVER: Session summary:', summary);
+    // Update game state to reflect the end
+    let gameState = gameStateManager.getGameState();
+    console.log('🏁 SERVER: Current game state:', gameState);
     
-    if (summary) {
+    if (gameState) {
+      gameState.status = result.reason === 'resignation' ? 'resigned' : 'ended';
+      gameState.winner = result.winner;
+      gameState.endReason = result.reason;
+      gameState.lastUpdated = new Date().toISOString();
+      gameStateManager.saveGameState(gameState);
+      console.log('🏁 SERVER: Updated game state:', gameState);
+      
       // Send game summary via MCP
       console.log('🏁 SERVER: Sending game summary via MCP...');
-      await this.mcpClient.sendGameSummary(summary);
-      
-      // Update game state to reflect the end
-      let gameState = gameStateManager.getGameState(sessionId);
-      console.log('🏁 SERVER: Current game state:', gameState);
-      
-      if (gameState) {
-        gameState.status = result.reason === 'resignation' ? 'resigned' : 'ended';
-        gameState.winner = result.winner;
-        gameState.endReason = result.reason;
-        gameState.lastUpdated = new Date().toISOString();
-        gameStateManager.saveGameState(sessionId, gameState);
-        console.log('🏁 SERVER: Updated game state:', gameState);
-      }
-      
-      // Broadcast session ended to all clients in the session
-      const broadcastMessage = {
-        type: 'session_ended',
-        sessionId,
-        result,
-        summary
+      const summary = {
+        moves: gameState.moves,
+        result: result,
+        duration: Date.now() - new Date(gameState.startTime).getTime()
       };
-      console.log('🏁 SERVER: Broadcasting to session:', broadcastMessage);
-      this.broadcastToSession(sessionId, broadcastMessage);
-      console.log('🏁 SERVER: Broadcast complete');
-    } else {
-      console.log('🏁 SERVER: No summary returned from sessionManager.endSession');
+      await this.mcpClient.sendGameSummary(summary);
     }
+    
+    // Broadcast session ended to all clients
+    const broadcastMessage = {
+      type: 'session_ended',
+      result
+    };
+    console.log('🏁 SERVER: Broadcasting to all clients:', broadcastMessage);
+    this.broadcastToAll(broadcastMessage);
+    console.log('🏁 SERVER: Broadcast complete');
   }
 
   async handleUpdateGameMode(ws, message) {
-    const { sessionId, gameMode, playerColor, aiEloRating, aiTimeLimit } = message;
+    const { gameMode, playerColor, aiEloRating, aiTimeLimit } = message;
     
-    console.log(`Updating game mode for session ${sessionId}:`, {
+    console.log(`Updating game mode:`, {
       gameMode, playerColor, aiEloRating, aiTimeLimit
     });
     
     // Get or create game state
-    let gameState = gameStateManager.getGameState(sessionId);
+    let gameState = gameStateManager.getGameState();
     if (!gameState) {
-      gameState = {
-        gameId: sessionId,
-        active: true,
-        startTime: new Date().toISOString(),
-        mode: 'play',
-        moves: [],
-        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-        turn: 'white'
-      };
+      gameState = gameStateManager.resetGame();
     }
     
     // Update game mode information
@@ -947,12 +915,11 @@ class ChessTrainerServer {
     gameState.aiTimeLimit = aiTimeLimit;
     gameState.lastUpdated = new Date().toISOString();
     
-    gameStateManager.saveGameState(sessionId, gameState);
+    gameStateManager.saveGameState(gameState);
     
     // Send confirmation back to client
     ws.send(JSON.stringify({
       type: 'game_mode_updated',
-      sessionId,
       gameMode,
       playerColor,
       aiEloRating,
@@ -961,9 +928,9 @@ class ChessTrainerServer {
   }
 
   async handleSyncMove(ws, message) {
-    const { sessionId, move, fen, turn } = message;
+    const { move, fen, turn } = message;
     
-    console.log(`🎯 SYNC_MOVE received for session ${sessionId}:`, {
+    console.log(`🎯 SYNC_MOVE received:`, {
       move: move.san,
       uci: move.uci,
       fen,
@@ -971,22 +938,9 @@ class ChessTrainerServer {
     });
     
     // Get or create game state
-    let gameState = gameStateManager.getGameState(sessionId);
+    let gameState = gameStateManager.getGameState();
     if (!gameState) {
-      gameState = {
-        gameId: sessionId,
-        active: true,
-        startTime: new Date().toISOString(),
-        mode: 'play',
-        moves: [],
-        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-        turn: 'white',
-        // Initialize with default game mode information
-        gameMode: 'human_vs_human',
-        playerColor: 'white',
-        aiEloRating: 1500,
-        aiTimeLimit: 500
-      };
+      gameState = gameStateManager.resetGame();
     }
     
     // Add the move to the game state
@@ -1002,15 +956,14 @@ class ChessTrainerServer {
     gameState.turn = turn;
     gameState.lastUpdated = new Date().toISOString();
     
-    gameStateManager.saveGameState(sessionId, gameState);
+    gameStateManager.saveGameState(gameState);
     
     console.log(`✅ Move synced to server: ${move.san} (${move.uci}), total moves: ${gameState.moves.length}`);
     
-    // Broadcast the move to ALL clients in the session (including the sender)
-    console.log(`📡 Broadcasting move to all clients in session ${sessionId}`);
-    this.broadcastToSession(sessionId, {
+    // Broadcast the move to ALL clients
+    console.log(`📡 Broadcasting move to all clients`);
+    this.broadcastToAll({
       type: 'mcp_move',
-      sessionId,
       move: move.san,
       uci: move.uci,
       fen,
@@ -1020,39 +973,26 @@ class ChessTrainerServer {
   }
 
   async handleResetGame(ws, message) {
-    const { sessionId } = message;
-    
-    console.log(`🔄 Resetting game for session ${sessionId}`);
+    console.log(`🔄 Resetting game`);
     
     // Reset game state to starting position
-    const gameState = {
-      gameId: sessionId,
-      active: true,
-      startTime: new Date().toISOString(),
-      mode: 'play',
-      moves: [],
-      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-      turn: 'white',
-      lastUpdated: new Date().toISOString(),
-      // Keep default game mode information (will be updated by subsequent update_game_mode)
-      gameMode: 'human_vs_human',
-      playerColor: 'white',
-      aiEloRating: 1500,
-      aiTimeLimit: 500
-    };
+    const gameState = gameStateManager.resetGame();
     
-    // Save reset game state
-    gameStateManager.saveGameState(sessionId, gameState);
-    
-    console.log(`✅ Game reset for session ${sessionId}. State reset to starting position.`);
+    console.log(`✅ Game reset. State reset to starting position.`);
     
     // Send confirmation back to client
     ws.send(JSON.stringify({
       type: 'game_reset',
-      sessionId,
       fen: gameState.fen,
       turn: gameState.turn
     }));
+    
+    // Broadcast reset to all other clients
+    this.broadcastToAll({
+      type: 'game_reset',
+      fen: gameState.fen,
+      turn: gameState.turn
+    }, ws);
   }
 
   async handleInboundMCP(message) {
@@ -1124,7 +1064,6 @@ class ChessTrainerServer {
     
     // Clear client mappings
     this.clients.clear();
-    this.gameStates.clear();
     
     // Close HTTP server
     this.server.close((err) => {
@@ -1136,23 +1075,22 @@ class ChessTrainerServer {
     });
   }
 
-  // Helper method to broadcast message to all clients in a session
-  broadcastToSession(sessionId, message, excludeWs = null) {
-    console.log(`🔍 DEBUG: Attempting to broadcast to session ${sessionId}`);
-    const clientSet = this.clients.get(sessionId);
+  // Helper method to broadcast message to all clients
+  broadcastToAll(message, excludeWs = null) {
+    console.log(`🔍 DEBUG: Attempting to broadcast to all clients`);
     
-    if (!clientSet) {
-      console.log(`❌ No client set found for session ${sessionId}`);
+    if (this.clients.size === 0) {
+      console.log(`❌ No clients connected`);
       return;
     }
     
-    console.log(`📊 Found ${clientSet.size} total clients in session ${sessionId}`);
+    console.log(`📊 Found ${this.clients.size} total clients`);
     
     const messageStr = JSON.stringify(message);
     let broadcastCount = 0;
     let excludedCount = 0;
     
-    for (const client of clientSet) {
+    for (const client of this.clients) {
       console.log(`🔍 Checking client: ${client.clientName} (${client.clientId})`);
       
       // Skip the excluded WebSocket connection (usually the sender)
@@ -1172,15 +1110,12 @@ class ChessTrainerServer {
       }
     }
     
-    console.log(`📡 Broadcast summary for session ${sessionId}: sent to ${broadcastCount} clients, excluded ${excludedCount} clients`);
+    console.log(`📡 Broadcast summary: sent to ${broadcastCount} clients, excluded ${excludedCount} clients`);
   }
 
-  // Helper method to get connected clients list for a session
-  getSessionClients(sessionId) {
-    const clientSet = this.clients.get(sessionId);
-    if (!clientSet) return [];
-    
-    return Array.from(clientSet).map(client => ({
+  // Helper method to get all connected clients
+  getAllClients() {
+    return Array.from(this.clients).map(client => ({
       clientId: client.clientId,
       clientName: client.clientName,
       joinedAt: client.joinedAt

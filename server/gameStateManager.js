@@ -7,7 +7,7 @@ const __dirname = path.dirname(__filename);
 
 // 共享状态文件路径
 const STATE_DIR = path.join(__dirname, '..', '.state');
-const GAMES_FILE = path.join(STATE_DIR, 'active_games.json');
+const GAME_FILE = path.join(STATE_DIR, 'game_state.json');
 const COMMANDS_FILE = path.join(STATE_DIR, 'mcp_commands.json');
 
 export class GameStateManager {
@@ -23,40 +23,47 @@ export class GameStateManager {
   }
 
   initializeFiles() {
-    if (!fs.existsSync(GAMES_FILE)) {
-      this.saveGames({});
+    if (!fs.existsSync(GAME_FILE)) {
+      this.saveGame(this.createDefaultGameState());
     }
     if (!fs.existsSync(COMMANDS_FILE)) {
       this.saveCommands([]);
     }
   }
 
-  // 游戏状态管理
-  saveGameState(gameId, gameState) {
-    const games = this.loadGames();
-    games[gameId] = {
+  createDefaultGameState() {
+    return {
+      active: true,
+      startTime: new Date().toISOString(),
+      mode: 'play',
+      moves: [],
+      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      turn: 'white',
+      lastUpdated: new Date().toISOString(),
+      gameMode: 'human_vs_human',
+      playerColor: 'white',
+      aiEloRating: 1500,
+      aiTimeLimit: 500
+    };
+  }
+
+  // 游戏状态管理 - 现在只有一个全局游戏
+  saveGameState(gameState) {
+    const updatedState = {
       ...gameState,
       lastUpdated: new Date().toISOString()
     };
-    this.saveGames(games);
+    this.saveGame(updatedState);
   }
 
-  getGameState(gameId) {
-    const games = this.loadGames();
-    return games[gameId] || null;
+  getGameState() {
+    return this.loadGame();
   }
 
-  getAllActiveGames() {
-    const games = this.loadGames();
-    return Object.entries(games)
-      .filter(([_, game]) => game.active)
-      .map(([gameId, game]) => ({ gameId, ...game }));
-  }
-
-  removeGame(gameId) {
-    const games = this.loadGames();
-    delete games[gameId];
-    this.saveGames(games);
+  resetGame() {
+    const newState = this.createDefaultGameState();
+    this.saveGame(newState);
+    return newState;
   }
 
   // MCP 命令队列管理
@@ -101,21 +108,21 @@ export class GameStateManager {
   }
 
   // 文件操作
-  loadGames() {
+  loadGame() {
     try {
-      const data = fs.readFileSync(GAMES_FILE, 'utf8');
+      const data = fs.readFileSync(GAME_FILE, 'utf8');
       return JSON.parse(data);
     } catch (error) {
-      console.warn('Failed to load games state:', error.message);
-      return {};
+      console.warn('Failed to load game state:', error.message);
+      return this.createDefaultGameState();
     }
   }
 
-  saveGames(games) {
+  saveGame(gameState) {
     try {
-      fs.writeFileSync(GAMES_FILE, JSON.stringify(games, null, 2));
+      fs.writeFileSync(GAME_FILE, JSON.stringify(gameState, null, 2));
     } catch (error) {
-      console.error('Failed to save games state:', error.message);
+      console.error('Failed to save game state:', error.message);
     }
   }
 
@@ -140,8 +147,8 @@ export class GameStateManager {
   // 清理方法
   cleanup() {
     try {
-      if (fs.existsSync(GAMES_FILE)) {
-        fs.unlinkSync(GAMES_FILE);
+      if (fs.existsSync(GAME_FILE)) {
+        fs.unlinkSync(GAME_FILE);
       }
       if (fs.existsSync(COMMANDS_FILE)) {
         fs.unlinkSync(COMMANDS_FILE);

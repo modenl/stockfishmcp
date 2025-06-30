@@ -2,10 +2,9 @@
   import { onMount, onDestroy } from 'svelte';
   import { Chess } from 'chessops/chess';
   import { parseFen, makeFen } from 'chessops/fen';
-  import { parseUci, makeUci } from 'chessops/util';
-  import { parseSquare } from 'chessops/util';
+  import { parseUci, parseSquare } from 'chessops/util';
   import { makeSan } from 'chessops/san';
-  import { chessgroundDests, chessgroundMove } from 'chessops/compat';
+  import { chessgroundDests } from 'chessops/compat';
 
   export let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
   export let turn = 'white';
@@ -16,6 +15,8 @@
   export let aiThinking = false;
   export let gameStatus = 'playing';
   export let replayMode = false;
+  export let boardWidth = 512;
+  export let boardHeight = 512;
   
   import { createEventDispatcher } from 'svelte';
   const dispatch = createEventDispatcher();
@@ -62,8 +63,17 @@
         },
         lastMove: highlightedSquares.length >= 2 ? [highlightedSquares[0], highlightedSquares[1]] : undefined
       });
+      
+      // Add brown theme class to the cg-wrap element
+      const cgWrap = boardElement.querySelector('.cg-wrap');
+      if (cgWrap) {
+        cgWrap.classList.add('brown');
+      }
+      
+      // ResizeObserver is handled internally by chessground
+      // No need for manual resize handling
 
-      console.log('Chessground initialized with chessops');
+      // Chessground initialized with chessops
     } catch (error) {
       console.error('Failed to load Chessground:', error);
       showTextBoard();
@@ -77,7 +87,7 @@
   });
 
   function handleMove(orig, dest, metadata) {
-    console.log('Move attempted:', orig, 'to', dest, 'metadata:', metadata);
+    // Move attempted
     
     try {
       // Create basic move object
@@ -86,7 +96,7 @@
       // Check if this is a promotion move and add promotion piece
       if (needsPromotion(orig, dest)) {
         moveUci += 'q'; // Default to queen promotion
-        console.log('Promotion detected, move UCI:', moveUci);
+        // Promotion detected
       }
       
       // Parse the move using chessops
@@ -97,11 +107,11 @@
         return;
       }
       
-      console.log('Parsed move:', move);
+      // Parsed move
       
       // Validate and make the move
       if (chess.isLegal(move)) {
-        console.log('Move is legal, executing...');
+        // Move is legal, executing
         
         // Get SAN notation before making the move
         const san = makeSan(chess, move);
@@ -122,10 +132,10 @@
           promotion: move.promotion || null
         };
         
-        console.log('Legal move made:', moveObj);
+        // Legal move made
         dispatch('move', moveObj);
       } else {
-        console.log('Illegal move attempted:', moveUci);
+        // Illegal move attempted
         // Reset the board position
         updateBoard();
       }
@@ -187,6 +197,7 @@
   }
 
   // Reactive updates - combined to avoid conflicts
+  // React to: fen, turn, aiThinking, disabled, gameStatus, playerColor changes
   $: if (chessground) {
     try {
       // Update chess position from FEN if it changed
@@ -207,10 +218,12 @@
       console.error('Error updating board:', error);
     }
   }
+  
+  
 </script>
 
 <div class="chess-board-container">
-  <div class="board-wrapper">
+  <div class="board-wrapper" style="width: {boardWidth}px; height: {boardHeight}px; --board-size: {boardWidth}px;">
     <div bind:this={boardElement} class="chess-board"></div>
     {#if aiThinking}
       <div class="ai-thinking-overlay">
@@ -234,8 +247,8 @@
 
   .board-wrapper {
     position: relative;
-    width: 512px;
-    height: 512px;
+    /* width & height will be set via inline style for flexibility */
+    aspect-ratio: 1; /* Ensure square aspect ratio */
   }
 
   .chess-board {
@@ -280,20 +293,11 @@
     100% { transform: rotate(360deg); }
   }
 
-  /* Import Chessground styles */
-  :global(.cg-wrap) {
-    width: 100% !important;
-    height: 100% !important;
-    position: relative;
+  /* Chessground must fill parent container */
+  :global(.board-wrapper > .chess-board > .cg-wrap) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
   }
-  
-  :global(.cg-container) {
-    width: 100% !important;
-    height: 100% !important;
-  }
-  
-  :global(.cg-board) {
-    width: 100% !important;
-    height: 100% !important;
-  }
-</style> 
+</style>

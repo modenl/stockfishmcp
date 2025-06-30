@@ -76,7 +76,8 @@
     </div>
     
     <!-- Engine Status -->
-    <div class="status-indicator {engineReady ? 'status-connected' : 'status-analyzing'}" title="Chess Engine">
+    <div class="status-indicator {engineReady ? 'status-connected' : engineStatus === 'iframe-disabled' ? 'status-disabled' : 'status-analyzing'}" 
+         title="{engineStatus === 'iframe-disabled' ? 'AI disabled in iframe mode' : 'Chess Engine'}">
       <Cpu size="14" />
     </div>
     
@@ -158,6 +159,11 @@
 
   .status-analyzing {
     color: var(--warning);
+  }
+  
+  .status-disabled {
+    color: var(--text-muted);
+    opacity: 0.6;
   }
 
   .status-count {

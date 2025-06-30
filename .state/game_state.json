@@ -1,0 +1,13 @@
+{
+  "active": true,
+  "startTime": "2025-06-30T23:25:59.606Z",
+  "mode": "play",
+  "moves": [],
+  "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "turn": "white",
+  "lastUpdated": "2025-06-30T23:25:59.606Z",
+  "gameMode": "human_vs_ai",
+  "playerColor": "white",
+  "aiEloRating": 1500,
+  "aiTimeLimit": 500
+}

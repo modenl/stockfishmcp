@@ -1,5 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import ChessBoard from './components/ChessBoard.svelte';
   import ControlPanel from './components/ControlPanel.svelte';
   import StatusBar from './components/StatusBar.svelte';
@@ -13,6 +14,71 @@
   import { makeSan, parseSan } from 'chessops/san';
   import './App.css';
   
+  // ===== Embed / Iframe Configuration =====
+  const urlParams = new URLSearchParams(window.location.search);
+  const embedModeRaw = urlParams.get('mode') || '';
+  const embedMode = embedModeRaw.trim().toLowerCase();
+  const showControlsParam = urlParams.get('show_controls');
+  const allowMovesParam = urlParams.get('allow_moves');
+  const widthParam = urlParams.get('width');
+  const heightParam = urlParams.get('height');
+
+  // Flags derived from params
+  $: minimalMode = embedMode === 'minimal';
+  const showControls = showControlsParam === null ? true : !(showControlsParam === 'false' || showControlsParam === '0');
+  // allowMoves currently not enforced (for future use)
+
+  // Board size configuration - make it responsive
+  let boardWidth = widthParam ? parseInt(widthParam, 10) || 512 : 512;
+  let boardHeight = heightParam ? parseInt(heightParam, 10) || boardWidth : boardWidth;
+  
+  // Update board size based on window size for responsive layout
+  $: if (windowWidth < 768) {
+    // Mobile: smaller board
+    boardWidth = Math.min(windowWidth - 32, 400);
+    boardHeight = boardWidth;
+  } else if (windowWidth < 1024) {
+    // Tablet: medium board
+    boardWidth = Math.min(windowWidth * 0.6, 500);
+    boardHeight = boardWidth;
+  } else {
+    // Desktop: use URL params or default
+    boardWidth = widthParam ? parseInt(widthParam, 10) || 512 : 512;
+    boardHeight = heightParam ? parseInt(heightParam, 10) || boardWidth : boardWidth;
+  }
+
+  // Track window width for responsive layout
+  let windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1024;
+  
+  // Handle window resize
+  onMount(() => {
+    const handleResize = () => {
+      windowWidth = window.innerWidth;
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  });
+
+  // Reactive style for board layout (responsive and controls-aware)
+  $: boardGridStyle = (() => {
+    if (!showControls || minimalMode) {
+      return 'grid-template-columns: 1fr;';
+    }
+    
+    // For small screens (mobile), stack vertically
+    if (windowWidth < 768) {
+      return 'grid-template-columns: 1fr; gap: 1.5rem;';
+    }
+    // For medium screens (tablet), use smaller side panel
+    else if (windowWidth < 1024) {
+      return 'grid-template-columns: minmax(300px, 1fr) 280px; gap: 1.5rem;';
+    }
+    // For large screens (desktop), use full layout
+    else {
+      return 'grid-template-columns: minmax(320px, 1fr) 350px; gap: 2rem;';
+    }
+  })();
+
   // New Game Modal state
   let showGameModeModal = false;
   let selectedMode = 'human_vs_human';
@@ -95,29 +161,58 @@
   }
 
   onMount(() => {
+    // App initialization
+    
     // stockfish service initializes itself automatically.
     unsubscribeWS = webSocketStore.subscribe(({ lastMessage }) => {
       if (lastMessage) handleWebSocketMessage(lastMessage);
     });
     
-    // Connect to WebSocket server
-    const wsUrl = `ws://${window.location.hostname}:3456`;
-    console.log('🔌 Connecting to WebSocket:', wsUrl, 'as', clientName, `(${clientId})`);
-    webSocketStore.connect(wsUrl);
+    // Delay WebSocket connection to ensure WebView is fully loaded
+    const connectDelay = window.location.href.includes('file://') ? 2000 : 500; // Longer delay for WebView
+    
+    setTimeout(() => {
+      // Connect to WebSocket server
+      // In WebView, hostname might be empty or different, so we use localhost as fallback
+      const hostname = window.location.hostname || 'localhost';
+      const wsUrl = `ws://${hostname}:3456`;
+      // Connecting to WebSocket
+      
+      try {
+        webSocketStore.connect(wsUrl);
+      } catch (error) {
+        console.error('❌ Failed to connect WebSocket:', error);
+      }
+    }, connectDelay);
     
     // Join the session once connected
-    setTimeout(() => {
-      console.log('🔗 Joining WebSocket session:', sessionId, 'as', clientName);
-      webSocketStore.sendMessage({
-        type: 'join_session',
-        sessionId: sessionId,
-        clientId: clientId,
-        clientName: clientName
-      });
+    // Subscribe to WebSocket state to know when it's connected
+    let checkConnectionInterval;
+    let connectionCheckCount = 0;
+    const maxConnectionChecks = 50; // 5 seconds max
+    
+    checkConnectionInterval = setInterval(() => {
+      connectionCheckCount++;
+      const wsState = get(webSocketStore);
       
-      // Load current game state from server
-      loadGameStateFromServer();
-    }, 1000); // Wait 1 second for connection to establish
+      if (wsState.isConnected) {
+        // WebSocket connected, joining session
+        webSocketStore.sendMessage({
+          type: 'join_session',
+          sessionId: sessionId,
+          clientId: clientId,
+          clientName: clientName
+        });
+        
+        // Load current game state from server
+        loadGameStateFromServer();
+        
+        clearInterval(checkConnectionInterval);
+      } else if (connectionCheckCount >= maxConnectionChecks) {
+        console.error('❌ WebSocket connection timeout after 5 seconds');
+        clearInterval(checkConnectionInterval);
+      }
+    }, 100); // Check every 100ms
     
     // Optionally you can run a self-test, but doing so can interfere with live searches.
     // If you really need to test the engine start-up, run it once after the initial page load—
@@ -131,24 +226,23 @@
   });
 
   function handleWebSocketMessage(message) {
-    console.log(`[${clientName}] 📨 WebSocket message received:`, message);
-    console.log(`[${clientName}] 🔍 Message type: "${message.type}", SessionId: "${message.sessionId}", Current SessionId: "${sessionId}"`);
+    // WebSocket message received
     
     // Only process messages that are objects and have a type
     if (!message || typeof message !== 'object' || !message.type) {
-      console.log(`[${clientName}] ❌ Invalid message format:`, message);
+      // Invalid message format
       return;
     }
 
     switch (message.type) {
       case 'mcp_move':
-        console.log(`[${clientName}] 🎯 Received mcp_move for session: ${message.sessionId}`);
+        // Received mcp_move
         // Only handle moves for the current session/game
         if (message.sessionId === sessionId) {
-          console.log(`[${clientName}] ✅ SessionId matches, handling move`);
+          // SessionId matches, handling move
           handleServerMove(message);
         } else {
-          console.log(`[${clientName}] ⏭️  SessionId mismatch, ignoring move`);
+          // SessionId mismatch, ignoring move
         }
         break;
       case 'mcp_game_reset':
@@ -159,7 +253,7 @@
         break;
       case 'client_joined':
         // Handle new client joining
-        console.log(`👋 Client joined: ${message.clientName} (${message.clientId})`);
+        // Client joined
         if (!connectedClients.find(c => c.clientId === message.clientId)) {
           connectedClients = [...connectedClients, {
             clientId: message.clientId,
@@ -170,28 +264,37 @@
         break;
       case 'client_left':
         // Handle client leaving
-        console.log(`👋 Client left: ${message.clientName} (${message.clientId})`);
+        // Client left
         connectedClients = connectedClients.filter(c => c.clientId !== message.clientId);
         break;
       case 'clients_list':
         // Update list of connected clients
-        console.log('👥 Connected clients updated:', message.clients);
+        // Connected clients updated
         connectedClients = message.clients || [];
         break;
       case 'error':
         // Handle error messages from server
         console.error(`[${clientName}] ❌ WebSocket error:`, message.message);
         break;
+      case 'stop_replay':
+        // Handle stop replay message from server
+        // Stop replay message received
+        if (showReplayMode) {
+          // Closing current replay as requested by server
+          showReplayMode = false;
+          replayGameData = null;
+        }
+        break;
       case 'pgn_replay_loaded':
         // Handle PGN replay loaded from MCP
-        console.log(`[${clientName}] 🎬 PGN replay loaded:`, message);
-        if (message.gameId === sessionId) {
+        // PGN replay loaded
+        if (!message.gameId || message.gameId === '*' || message.gameId === sessionId) {
           handlePgnReplayLoaded(message.moves, message.autoPlay, message.delayMs);
         }
         break;
       case 'session_ended':
         // Handle game end acknowledgment from server
-        console.log(`[${clientName}] 🏁 Session ended acknowledgment received`);
+        // Session ended acknowledgment received
         if (message.result) {
           // Update local game state to reflect the resignation
           if (message.result.reason === 'resignation') {
@@ -203,16 +306,16 @@
             gameState = gameState;
             updateGameState();
             
-            console.log(`[${clientName}] 👑 ${message.result.winner} wins by resignation!`);
+            // Winner by resignation
           }
         }
         if (message.summary) {
-          console.log(`[${clientName}] 📊 Game summary:`, message.summary);
+          // Game summary received
         }
         break;
       case 'session_state':
         // Handle session state updates
-        console.log(`[${clientName}] 📊 Session state received:`, message);
+        // Session state received
         if (message.gameState) {
           // Apply game state from server
           const serverGameState = message.gameState;
@@ -238,17 +341,16 @@
               gameState.aiEloRating = serverGameState.aiEloRating || 1500;
               gameState.aiTimeLimit = serverGameState.aiTimeLimit || 500;
               
-              console.log('✅ Applied session state from server:', {
-                fen: gameState.fen,
-                turn: gameState.turn,
-                moves: gameState.moves.length,
-                mode: gameState.mode,
-                playerColor: gameState.playerColor,
-                aiEloRating: gameState.aiEloRating,
-                aiTimeLimit: gameState.aiTimeLimit
-              });
+              // Applied session state from server
               
               updateGameState();
+              
+              // Check if game is in replay mode
+              if (serverGameState.mode === 'replay' && serverGameState.replayData) {
+                // Game is in replay mode, loading replay data
+                const replayData = serverGameState.replayData;
+                handlePgnReplayLoaded(replayData.moves, replayData.autoPlay, replayData.delayMs);
+              }
               
               // Check if AI should move (if it's AI's turn)
               if (
@@ -257,7 +359,7 @@
                 gameState.turn !== gameState.playerColor &&
                 !gameState.aiThinking
               ) {
-                console.log('🤖 AI turn detected in session state, scheduling AI move...');
+                // AI turn detected in session state
                 setTimeout(() => makeAIMove(), 500);
               }
               
@@ -269,13 +371,13 @@
         break;
       // You can add more cases for other message types if needed
       default:
-        console.log(`[${clientName}] 🤷 Unhandled WebSocket message type:`, message.type);
+        // Unhandled WebSocket message type
         break;
     }
   }
 
   function handleServerReset(resetData) {
-    console.log('🔄 Received game reset from server:', resetData);
+    // Received game reset from server
     
     // Reset the game engine to starting position
     game = Chess.default();
@@ -297,12 +399,7 @@
       gameState.aiEloRating = resetData.gameSettings.aiEloRating;
       gameState.aiTimeLimit = resetData.gameSettings.aiTimeLimit;
       
-      console.log('✅ Applied game settings from server:', {
-        mode: gameState.mode,
-        playerColor: gameState.playerColor,
-        aiEloRating: gameState.aiEloRating,
-        aiTimeLimit: gameState.aiTimeLimit
-      });
+      // Applied game settings from server
     }
     
     // Reset UI state (clear highlighted squares and selections)
@@ -311,7 +408,7 @@
     
     updateGameState();
     
-    console.log('✅ Game reset applied locally');
+    // Game reset applied locally
     
     // Check if AI should move first (if player chose black)
     if (
@@ -320,13 +417,13 @@
       gameState.turn !== gameState.playerColor &&
       !gameState.aiThinking
     ) {
-      console.log('🤖 AI should move first after reset, scheduling AI move...');
+      // AI should move first after reset
       setTimeout(() => makeAIMove(), 500);
     }
   }
 
   function handleServerMove(moveData) {
-    console.log('📡 Received move from server:', moveData);
+    // Received move from server
     if (!game) return;
     
     try {
@@ -340,7 +437,7 @@
       // and update our game state to match the server's position
       if (moveData.fen) {
         try {
-          console.log('🎯 Updating game state to server position:', moveData.fen);
+          // Updating game state to server position
           
           // Parse the server's FEN and update our game state
           const setup = parseFen(moveData.fen).unwrap();
@@ -364,13 +461,13 @@
           // Highlight the move squares
           if (moveData.uci && moveData.uci.length >= 4) {
             uiState.highlightedSquares = [moveData.uci.substring(0, 2), moveData.uci.substring(2, 4)];
-            console.log('🎯 Highlighted server move squares:', uiState.highlightedSquares);
+            // Highlighted server move squares
           }
           
           // Update UI
           updateGameState();
           
-          console.log('✅ Game state synchronized with server, turn is now:', gameState.turn);
+          // Game state synchronized with server
           
           // Check if it's AI's turn after this move
           if (
@@ -379,7 +476,7 @@
             gameState.turn !== gameState.playerColor &&
             !gameState.aiThinking
           ) {
-            console.log('🤖 AI turn detected after server move, scheduling AI move...');
+            // AI turn detected after server move
             setTimeout(() => makeAIMove(), 300);
           }
           
@@ -387,21 +484,21 @@
           console.error('Failed to parse server FEN:', moveData.fen, fenError);
           // Fallback: try to apply the move to current position
           if (game.isLegal(uciMove)) {
-            console.log('🔄 Fallback: applying move to current position');
+            // Fallback: applying move to current position
             game.play(uciMove);
             updateGameState();
           } else {
-            console.warn('Move is illegal in current position and cannot parse server FEN');
+            // Move is illegal in current position
           }
         }
       } else {
         // Fallback if no FEN provided - validate against current state
         if (game.isLegal(uciMove)) {
-          console.log('🎯 Applying move from server (no FEN provided):', moveData.move, moveData.uci);
+          // Applying move from server (no FEN provided)
           game.play(uciMove);
           updateGameState();
         } else {
-          console.warn('Received illegal move from server:', moveData.uci);
+          // Received illegal move from server
         }
       }
     } catch (e) {
@@ -410,7 +507,7 @@
   }
 
   function parseServerMoveHistory(moveHistoryText, finalFen) {
-    console.log('🔍 Parsing server move history:', moveHistoryText);
+    // Parsing server move history
     
     if (!moveHistoryText || moveHistoryText === 'No moves yet') {
       return [];
@@ -447,22 +544,22 @@
           moves.push(moveRecord);
           ply++;
           
-          console.log(`✅ Parsed move ${ply-1}: ${token} (${uci})`);
+          // Parsed move successfully
         } else {
-          console.warn(`⚠️ Could not parse move: ${token}`);
+          // Could not parse move
         }
       } catch (error) {
-        console.warn(`⚠️ Error parsing move ${token}:`, error);
+        // Error parsing move
       }
     }
     
-    console.log(`✅ Successfully parsed ${moves.length} moves from server history`);
+    // Successfully parsed moves from server history
     return moves;
   }
 
   async function loadGameStateFromServer() {
     try {
-      console.log(`[${clientName}] 🔄 Loading game state from server...`);
+      // Loading game state from server
       const response = await fetch('/api/mcp/get_game_state', {
         method: 'POST',
         headers: {
@@ -477,7 +574,7 @@
       
       if (response.ok) {
         const result = await response.json();
-        console.log(`[${clientName}] 📊 Server game state loaded:`, result);
+        // Server game state loaded
         
         // Parse the game state from server response
         // The server returns a text message, we need to extract the FEN and moves
@@ -487,7 +584,7 @@
           
           if (fenMatch) {
             const serverFen = fenMatch[1].trim();
-            console.log(`[${clientName}] 🎯 Server FEN:`, serverFen);
+            // Server FEN received
             
             // Load this position into the client
             try {
@@ -501,14 +598,14 @@
               // Parse move history if available
               if (movesMatch) {
                 const moveHistory = movesMatch[1].trim();
-                console.log(`[${clientName}] 📝 Server move history:`, moveHistory);
+                // Server move history
                 
                 // Parse the move history and reconstruct gameState.moves
                 if (moveHistory && moveHistory !== 'No moves yet') {
                   try {
                     gameState.moves = parseServerMoveHistory(moveHistory, serverFen);
                     gameState.currentMoveIndex = gameState.moves.length - 1;
-                    console.log(`[${clientName}] ✅ Parsed ${gameState.moves.length} moves from server`);
+                    // Parsed moves from server
                   } catch (error) {
                     console.error(`[${clientName}] ❌ Failed to parse move history:`, error);
                     gameState.moves = [];
@@ -526,7 +623,7 @@
               // Ensure UI is updated with the loaded state
               updateGameState();
               
-              console.log(`[${clientName}] ✅ Game state synchronized with server`);
+              // Game state synchronized with server
               
             } catch (e) {
               console.error(`[${clientName}] ❌ Failed to parse server FEN:`, e);
@@ -544,7 +641,7 @@
   function syncMoveToServer(move, oldFen, newFen, sanNotation) {
     try {
       const uciMove = makeUci(move);
-      console.log(`[${clientName}] 💾 Syncing move to server via WebSocket:`, { san: sanNotation, uci: uciMove });
+      // Syncing move to server via WebSocket
       
       // Send move via WebSocket instead of HTTP
       webSocketStore.sendMessage({
@@ -560,7 +657,7 @@
         turn: newFen.includes(' w ') ? 'white' : 'black'
       });
       
-      console.log(`[${clientName}] ✅ Move sent via WebSocket`);
+      // Move sent via WebSocket
     } catch (error) {
       console.error(`[${clientName}] ❌ Error syncing move to server:`, error);
     }
@@ -568,12 +665,7 @@
 
   async function syncNewGameToServer() {
     try {
-      console.log('🎮 Syncing new game to server with settings:', {
-        mode: gameState.mode,
-        playerColor: gameState.playerColor,
-        aiEloRating: gameState.aiEloRating,
-        aiTimeLimit: gameState.aiTimeLimit
-      });
+      // Syncing new game to server with settings
       
       const response = await fetch('/api/mcp/reset_game', {
         method: 'POST',
@@ -593,7 +685,7 @@
       
       if (response.ok) {
         const result = await response.json();
-        console.log('✅ New game synced to server successfully');
+        // New game synced to server successfully
       } else {
         console.error('❌ Failed to sync new game to server');
       }
@@ -603,7 +695,7 @@
   }
 
   function handleMove(move) {
-    console.log(`[${clientName}] 🎯 Processing move:`, move);
+    // Processing move
     if (!game) return;
 
     const oldFen = gameState.fen;
@@ -612,7 +704,7 @@
     const sanNotation = move.san || makeSan(game, move);
     
     // Apply the move locally first
-    console.log(`[${clientName}] 🎯 Applying move locally:`, sanNotation);
+    // Applying move locally
     game.play(move);
     
     // Update local game state
@@ -634,16 +726,27 @@
     const uci = makeUci(move);
     if (uci && uci.length >= 4) {
       uiState.highlightedSquares = [uci.substring(0, 2), uci.substring(2, 4)];
-      console.log('🎯 Highlighted move squares:', uiState.highlightedSquares);
+      // Highlighted move squares
     }
     
     // Update UI
     updateGameState();
     
-    console.log(`[${clientName}] ✅ Move applied locally, turn is now:`, gameState.turn);
+    // Move applied locally
     
     // Then sync to server (this will broadcast to other clients)
     syncMoveToServer(move, oldFen, newFen, sanNotation);
+    
+    // Check if AI should move after human move
+    if (
+      gameState.mode === 'human_vs_ai' &&
+      gameState.status === 'playing' &&
+      gameState.turn !== gameState.playerColor &&
+      !gameState.aiThinking
+    ) {
+      // Trigger AI move after human move
+      setTimeout(() => makeAIMove(), 300);
+    }
   }
   
   function checkGameStatus() {
@@ -651,22 +754,22 @@
 
     // Don't override status if game was resigned
     if (gameState.status === 'checkmate' && gameState.winner && !game.isCheckmate()) {
-      console.log('🏁 Game already ended (resignation), keeping status');
+      // Game already ended (resignation), keeping status
       return;
     }
 
     if (game.isCheckmate()) {
       gameState.status = 'checkmate';
       gameState.winner = game.turn === 'white' ? 'black' : 'white';
-      console.log(`🏁 Checkmate! ${gameState.winner} wins.`);
+      // Checkmate detected
     } else if (game.isStalemate()) {
       gameState.status = 'stalemate';
       gameState.winner = 'draw';
-      console.log('🏁 Stalemate! The game is a draw.');
+      // Stalemate detected
     } else if (game.isInsufficientMaterial()) {
       gameState.status = 'insufficient_material';
       gameState.winner = 'draw';
-      console.log('🏁 Insufficient material! The game is a draw.');
+      // Insufficient material detected
     } else {
       gameState.status = 'playing';
       gameState.winner = null;
@@ -683,25 +786,34 @@
       gameState.turn === gameState.playerColor ||
       gameState.aiThinking
     ) {
-      console.log('🚫 AI move blocked:', {
-        mode: gameState.mode,
-        status: gameState.status,
-        turn: gameState.turn,
-        playerColor: gameState.playerColor,
-        aiThinking: gameState.aiThinking
-      });
+      // AI move blocked
       return;
     }
 
     try {
-      console.log('🤖 AI starting to think...');
+      // Check if engine is available
+      if ($engineStatus === 'iframe-disabled') {
+        // AI is disabled in iframe mode
+        gameState.aiThinking = false;
+        updateGameState();
+        return;
+      }
+      
+      if (!$engineReady) {
+        // Chess engine not ready
+        gameState.aiThinking = false;
+        updateGameState();
+        return;
+      }
+      
+      // AI starting to think
       gameState.aiThinking = true;
       updateGameState();
 
       const aiResult = await stockfish.getBestMove(gameState.fen, gameState.aiEloRating, gameState.aiTimeLimit);
 
       if (aiResult && aiResult.move) {
-        console.log('🤖 AI found best move:', aiResult);
+        // AI found best move
 
         // Store evaluation if provided
         if (aiResult.evaluation) {
@@ -710,19 +822,18 @@
 
         const uciMove = parseUci(aiResult.move);
         if (uciMove && game.isLegal(uciMove)) {
-          console.log('🤖 AI making move:', aiResult.move);
-          // AI moves also go through the same flow - sync to server
-          await handleMove(uciMove);
-          // Set aiThinking to false immediately after the move is processed
+          // AI making move
+          // Reset aiThinking BEFORE making the move
           gameState.aiThinking = false;
-          updateGameState();
+          // AI moves also go through the same flow - sync to server
+          handleMove(uciMove);
         } else {
           console.error('❌ AI generated an illegal move:', aiResult.move);
           gameState.aiThinking = false;
           updateGameState();
         }
       } else {
-        console.log('🤔 AI has no move to make.');
+        // AI has no move to make
         gameState.aiThinking = false;
         updateGameState();
       }
@@ -734,18 +845,11 @@
   }
 
   function updateGameState() {
-    console.log('📊 updateGameState called');
-    if (!game) {
-      console.log('📊 No game object, returning');
-      return;
-    }
+    if (!game) return;
     const newFen = makeFen(game.toSetup());
     gameState.fen = newFen;
     gameState.turn = game.turn;
-    console.log('📊 Updated FEN:', newFen);
-    console.log('📊 Updated turn:', game.turn);
     checkGameStatus();
-    console.log('📊 Game status after check:', gameState.status);
   }
   
   function getColorDisplayName(color) {
@@ -753,7 +857,7 @@
   }
 
   async function handleNewGame(mode, playerColor, aiElo, aiTimeLimit, syncToServer = true) {
-    console.log('🎮 Starting new game:', { mode, playerColor, aiElo, aiTimeLimit });
+    // Starting new game
     
     // Immediately clear UI state for better user experience
     uiState.selectedSquare = null;
@@ -804,27 +908,23 @@
   }
 
   function handleEndGame(reason) {
-    console.log('🏁 handleEndGame called with reason:', reason);
-    console.log('🏁 Current gameState:', gameState);
-    console.log('🏁 Current sessionId:', sessionId);
+    // handleEndGame called
     
     if (reason === 'resign') {
-      console.log('🏁 Processing resignation...');
+      // Processing resignation
       
       // Set the winner to the opponent
       const resigningColor = gameState.turn;
       gameState.winner = resigningColor === 'white' ? 'black' : 'white';
       gameState.status = 'checkmate'; // Use checkmate status for resign
       
-      console.log(`👑 ${gameState.winner} wins by resignation!`);
-      console.log('🏁 Updated gameState:', gameState);
+      // Winner set by resignation
       
       // Clear any AI thinking state
       gameState.aiThinking = false;
       
       // Send resignation to server via WebSocket
-      console.log('🏁 Sending resignation to server...');
-      console.log('🏁 WebSocket store:', webSocketStore);
+      // Sending resignation to server
       
       try {
         webSocketStore.sendMessage({
@@ -835,7 +935,7 @@
             reason: 'resignation'
           }
         });
-        console.log('🏁 Resignation message sent successfully');
+        // Resignation message sent successfully
       } catch (error) {
         console.error('🏁 Error sending resignation:', error);
       }
@@ -844,9 +944,7 @@
       gameState = gameState;
       
       // Update the game state
-      console.log('🏁 Calling updateGameState...');
       updateGameState();
-      console.log('🏁 handleEndGame completed');
       
       // Ensure we're not in replay mode
       showReplayMode = false;
@@ -862,19 +960,19 @@
   }
   
   function handleResetAI() {
-    console.log('🔄 Resetting AI thinking state');
+    // Resetting AI thinking state
     gameState.aiThinking = false;
     gameState = gameState; // Force reactive update
   }
 
   async function analyzePosition() {
-    console.log('🔍 Starting position analysis...');
+    // Starting position analysis
     isAnalyzing = true;
     analysisResult = null;
     
     try {
       const result = await stockfish.getBestMove(gameState.fen, 2600, 1000); // Use max ELO for analysis, 1 second
-      console.log('🔍 Analysis result:', result);
+      // Analysis result received
       
       if (result && result.move) {
         // Parse the move for display
@@ -893,12 +991,12 @@
         evaluation = result.evaluation || { cp: 0, mate: null };
         evaluation.bestMove = result.move;
         
-        console.log('✅ Analysis complete. Best move:', result.move);
+        // Analysis complete
         
         // Highlight the best move on the board
         if (move) {
           uiState.highlightedSquares = [move.from, move.to];
-          console.log('🎯 Highlighted best move squares:', [move.from, move.to]);
+          // Highlighted best move squares
         }
       } else {
         console.error('❌ No move returned from analysis');
@@ -921,11 +1019,10 @@
 
   
     function handleLoadCurrentGame() {
-    console.log('🎬 Loading current game for replay');
-    console.log('🔍 Current gameState.moves:', gameState.moves);
+    // Loading current game for replay
     
     if (gameState.moves.length === 0) {
-      console.log('⚠️ No moves to replay');
+      // No moves to replay
       alert('当前游戏没有棋步可以复盘');
       return;
     }
@@ -940,7 +1037,7 @@
       try {
         // Prioritize SAN since it's more reliable and directly supported by chessops
         if (move.san && move.san.length > 0) {
-          console.log(`✅ Using SAN for replay: ${move.san}`);
+          // Using SAN for replay
           return {
             san: move.san,
             uci: move.uci || null, // Include UCI as fallback if available
@@ -953,7 +1050,7 @@
           const from = move.uci.substring(0, 2);
           const to = move.uci.substring(2, 4);
           if (/^[a-h][1-8]$/.test(from) && /^[a-h][1-8]$/.test(to)) {
-            console.log(`⚠️ Using UCI for replay (no SAN): ${move.uci}`);
+            // Using UCI for replay (no SAN)
             return {
               uci: move.uci,
               from: from,
@@ -964,7 +1061,7 @@
           }
         }
         
-        console.warn('Invalid move found (no valid SAN or UCI):', move);
+        // Invalid move found
         return null;
       } catch (error) {
         console.error('Error converting move for replay:', move, error);
@@ -973,7 +1070,7 @@
     }).filter(move => move !== null); // Remove null moves
     
     if (replayMoves.length === 0) {
-      console.log('⚠️ No valid moves to replay');
+      // No valid moves to replay
       alert('当前游戏没有有效的棋步可以复盘');
       return;
     }
@@ -987,7 +1084,7 @@
   }
   
   function handleCloseReplay() {
-    console.log('🚫 Closing replay mode');
+    // Closing replay mode
     showReplayMode = false;
     replayGameData = null;
   }
@@ -1001,12 +1098,18 @@
     uiState.selectedSquare = null;
     uiState.highlightedSquares = [];
     
-    handleNewGame(selectedMode, selectedPlayerColor, aiEloRating, aiTimeLimit);
+    // Close the modal first
     showGameModeModal = false;
+    
+    // Reset any existing game over status
+    gameState.status = 'playing';
+    gameState.winner = null;
+    
+    handleNewGame(selectedMode, selectedPlayerColor, aiEloRating, aiTimeLimit);
   }
   
   function handleLoadSampleGame(gameType) {
-    console.log('🎬 Loading sample game:', gameType);
+    // Loading sample game
     
     // Define sample games with their moves in UCI format
     const sampleGames = {
@@ -1072,8 +1175,27 @@
   }
 
   function handlePgnReplayLoaded(moves, autoPlay, delayMs) {
-    console.log('🎬 Starting PGN replay with', moves.length, 'moves');
+    // Starting PGN replay
     
+    if (!moves || !Array.isArray(moves) || moves.length === 0) {
+      console.error('❌ No moves provided for replay');
+      return;
+    }
+    
+    // Close any existing replay first
+    if (showReplayMode) {
+      // Closing existing replay before starting new one
+      showReplayMode = false;
+      replayGameData = null;
+      // Give UI time to cleanup
+      setTimeout(() => startNewReplay(moves, autoPlay, delayMs), 100);
+      return;
+    }
+    
+    startNewReplay(moves, autoPlay, delayMs);
+  }
+  
+  function startNewReplay(moves, autoPlay, delayMs) {
     // Reset the game to starting position
     game = Chess.default();
     gameState.fen = makeFen(game.toSetup());
@@ -1085,8 +1207,12 @@
     
     // Convert SAN moves to our format
     const replayMoves = [];
-    for (const sanMove of moves) {
+    // Converting SAN moves to replay format
+    
+    for (let i = 0; i < moves.length; i++) {
+      const sanMove = moves[i];
       try {
+        // Parsing move
         const move = parseSan(game, sanMove);
         if (move) {
           const uci = makeUci(move);
@@ -1098,11 +1224,16 @@
           });
           // Apply move to game to continue parsing
           game.play(move);
+          // Successfully parsed move
+        } else {
+          console.error(`    ❌ Failed to parse move ${i + 1}: "${sanMove}" - move is null`);
         }
       } catch (error) {
-        console.error('Failed to parse move:', sanMove, error);
+        console.error(`    ❌ Error parsing move ${i + 1}: "${sanMove}"`, error.message);
       }
     }
+    
+    // Converted moves for replay
     
     // Reset game again for replay
     game = Chess.default();
@@ -1118,29 +1249,24 @@
     
     // Enter replay mode
     showReplayMode = true;
+    // Replay mode activated
   }
   
   function handleFileUpload(event) {
-    console.log('📁 File upload event:', event);
     const file = event.target.files[0];
-    if (!file) {
-      console.log('No file selected');
-      return;
-    }
-
-    console.log('📁 Selected file:', file.name, file.type, file.size);
+    if (!file) return;
 
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const pgnContent = e.target.result;
-        console.log('📁 PGN content loaded:', pgnContent.substring(0, 200) + '...');
+        // PGN content loaded
         
         const gameData = parsePGN(pgnContent);
         if (gameData && gameData.moves && gameData.moves.length > 0) {
           replayGameData = gameData;
           showReplayMode = true;
-          console.log('✅ PGN loaded successfully:', gameData.title);
+          // PGN loaded successfully
         } else {
           alert('无法解析PGN文件。请确保文件格式正确。');
         }
@@ -1159,7 +1285,7 @@
   }
 
   function parsePGN(pgnContent) {
-    console.log('🔍 Parsing PGN content...');
+    // Parsing PGN content
     
     try {
       // Simple PGN parser - extract moves
@@ -1182,8 +1308,7 @@
         }
       }
       
-      console.log('📋 PGN headers:', headers);
-      console.log('♟️ PGN moves text:', moveText.trim());
+      // PGN headers and moves extracted
       
       // Parse moves from text
       const moves = [];
@@ -1217,17 +1342,17 @@
               throw new Error(`Failed to apply move: ${token}`);
             }
             
-            console.log(`✅ Parsed PGN move: ${token} (${uci})`);
+            // Parsed PGN move
           } else {
-            console.warn(`⚠️ Could not parse PGN move (invalid): ${token}`);
+            // Could not parse PGN move (invalid)
           }
         } catch (error) {
-          console.warn(`⚠️ Could not parse PGN move: ${token}`, error);
+          // Could not parse PGN move
         }
       }
       
       const title = headers.Event || headers.White + ' vs ' + headers.Black || 'PGN Game';
-      console.log(`✅ PGN parsed successfully: ${moves.length} moves`);
+      // PGN parsed successfully
       
       return {
         title: title,
@@ -1245,42 +1370,46 @@
 </script>
 
 <div class="app-container">
-  <!-- Header -->
-  <header class="app-header">
-    <div class="header-content">
-      <h1 class="app-title">Chess Trainer MCP</h1>
-      <div class="header-status">
-        <StatusBar
-          connectionStatus={$webSocketStore.connectionStatus}
-          engineReady={$engineReady}
-          engineStatus={$engineStatus}
-          gameStatus={gameState.status}
-          turn={gameState.turn}
-          aiThinking={gameState.aiThinking}
-          inCheck={gameState.inCheck}
-          sessionId={sessionId}
-          clientName={clientName}
-          clientId={clientId}
-          connectedClients={connectedClients}
-        />
+  <!-- Header (hidden in minimal mode) -->
+  {#if !minimalMode}
+    <header class="app-header">
+      <div class="header-content">
+        <h1 class="app-title">Chess Trainer MCP</h1>
+        <div class="header-status">
+          <StatusBar
+            connectionStatus={$webSocketStore.connectionStatus}
+            engineReady={$engineReady}
+            engineStatus={$engineStatus}
+            gameStatus={gameState.status}
+            turn={gameState.turn}
+            aiThinking={gameState.aiThinking}
+            inCheck={gameState.inCheck}
+            sessionId={sessionId}
+            clientName={clientName}
+            clientId={clientId}
+            connectedClients={connectedClients}
+          />
+        </div>
       </div>
-    </div>
-  </header>
+    </header>
+  {/if}
 
   <!-- Main Content -->
   <main class="main-content">
-    <div class="board-and-moves">
+    <div class="board-and-moves" style={boardGridStyle}>
       <div class="board-container">
         <div class="chess-board-wrapper">
           <ChessBoard
             fen={gameState.fen}
             turn={gameState.turn}
+            boardWidth={boardWidth}
+            boardHeight={boardHeight}
             on:move={event => {
-              console.log('📥 Move event received:', event.detail);
+              // Move event received
               
               // Don't allow moves if we're in replay mode
               if (showReplayMode) {
-                console.log('🚫 Move blocked: in replay mode');
+                // Move blocked: in replay mode
                 return;
               }
               
@@ -1341,6 +1470,7 @@
         </div>
       </div>
       
+      {#if showControls && !minimalMode}
       <div class="side-panel">
         <!-- Only show ControlPanel when NOT in replay mode -->
         {#if !showReplayMode}
@@ -1368,6 +1498,7 @@
           </div>
         {/if}
       </div>
+      {/if}
     </div>
   </main>
 

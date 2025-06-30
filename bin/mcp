@@ -3,5 +3,8 @@
 // MCP SDK-based server entry point
 import { MCPServer } from '../server/mcpServer.js';
 
+// Force production mode to use built client files
+process.env.NODE_ENV = 'production';
+
 const server = new MCPServer();
 server.run().catch(console.error); 

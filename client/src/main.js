@@ -4,13 +4,13 @@ import './index.css'
 let app = null;
 
 try {
-  console.log('Starting Chess Trainer app...');
+  // Starting Chess Trainer app
   
   app = new App({
     target: document.getElementById('root')
   });
   
-  console.log('Chess Trainer app started successfully');
+  // Chess Trainer app started successfully
   
   // Hide loading indicator
   const loading = document.getElementById('loading');

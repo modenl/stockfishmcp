@@ -48,33 +48,30 @@ export class GamePersistence {
   }
 
   /**
-   * Save all active games to persistent storage
+   * Save the global game to persistent storage
    */
   saveAllGames() {
-    let savedCount = 0;
-    
-    for (const [gameId, gameState] of this.server.gameStates) {
-      if (gameState.active) {
-        gameStateManager.saveGameState(gameId, gameState);
-        savedCount++;
+    try {
+      const gameState = gameStateManager.getGameState();
+      if (gameState && gameState.active) {
+        gameStateManager.saveGame(gameState);
+        console.log('Auto-saved game state');
       }
-    }
-    
-    if (savedCount > 0) {
-      console.log(`Auto-saved ${savedCount} active games`);
+    } catch (error) {
+      console.error('Error saving game state:', error);
     }
   }
 
   /**
-   * Mark games as inactive if no moves in last 24 hours
+   * Check if the game should be marked as inactive
    */
   cleanupInactiveGames() {
-    const inactivityThreshold = 24 * 60 * 60 * 1000; // 24 hours
-    const now = Date.now();
-    let cleanedCount = 0;
-
-    for (const [gameId, gameState] of this.server.gameStates) {
-      if (!gameState.active) continue;
+    try {
+      const inactivityThreshold = 24 * 60 * 60 * 1000; // 24 hours
+      const now = Date.now();
+      
+      const gameState = gameStateManager.getGameState();
+      if (!gameState || !gameState.active) return;
 
       // Check last move time
       const lastMove = gameState.moves[gameState.moves.length - 1];
@@ -89,16 +86,12 @@ export class GamePersistence {
         gameState.endReason = 'inactivity';
         
         // Save the updated state
-        gameStateManager.saveGameState(gameId, gameState);
+        gameStateManager.saveGame(gameState);
         
-        // Remove from active memory
-        this.server.gameStates.delete(gameId);
-        cleanedCount++;
+        console.log('Marked game as inactive due to inactivity');
       }
-    }
-
-    if (cleanedCount > 0) {
-      console.log(`Cleaned up ${cleanedCount} inactive games`);
+    } catch (error) {
+      console.error('Error during cleanup:', error);
     }
   }
 
@@ -106,16 +99,15 @@ export class GamePersistence {
    * Get game statistics
    */
   getStats() {
-    const activeGames = Array.from(this.server.gameStates.values())
-      .filter(game => game.active).length;
+    const gameState = gameStateManager.getGameState();
+    const activeGames = (gameState && gameState.active) ? 1 : 0;
     
-    const totalMoves = Array.from(this.server.gameStates.values())
-      .reduce((sum, game) => sum + game.moves.length, 0);
+    const totalMoves = gameState ? gameState.moves.length : 0;
 
     return {
       activeGames,
       totalMoves,
-      memoryGames: this.server.gameStates.size
+      memoryGames: activeGames
     };
   }
 }

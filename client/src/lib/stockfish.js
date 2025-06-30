@@ -42,22 +42,36 @@ class Stockfish {
 
   async _init() {
     try {
-      console.log('🔄 Loading Stockfish NNUE module...');
+      // Loading Stockfish NNUE module
       engineStatus.set('loading');
+      
+      // Check if we're in an iframe
+      const isInIframe = window.self !== window.top;
+      // Check if running in iframe
+      const hasSharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined';
       
       // Load the Stockfish module using script tag approach for Vite
       if (!window.Stockfish) {
         await this._loadStockfishScript();
       }
       
-      console.log('🔄 Initializing Stockfish engine...');
-      console.log('Stockfish constructor available:', typeof window.Stockfish);
+      // Initializing Stockfish engine
       engineStatus.set('initializing');
       
       // Create engine with simplified options
-      this.engine = await window.Stockfish();
+      // If in iframe without SharedArrayBuffer, this might fail
+      try {
+        this.engine = await window.Stockfish();
+      } catch (engineError) {
+        console.error('❌ Failed to create Stockfish engine:', engineError);
+        // If SharedArrayBuffer is not available, we can't use the WASM version
+        if (!hasSharedArrayBuffer && isInIframe) {
+          throw new Error('Stockfish requires SharedArrayBuffer which is not available in cross-origin iframes. AI play is disabled.');
+        }
+        throw engineError;
+      }
       
-      console.log('✅ Stockfish engine instance created');
+      // Stockfish engine instance created
       
       // Set up message handling
       this.engine.addMessageListener((message) => {
@@ -65,7 +79,7 @@ class Stockfish {
       });
       
       // Initialize UCI protocol
-      console.log('🔄 Starting UCI protocol...');
+      // Starting UCI protocol
       engineStatus.set('starting');
       this.engine.postMessage('uci');
       
@@ -77,7 +91,13 @@ class Stockfish {
       console.error('Error details:', error.message, error.stack);
       this.isReady = false;
       engineReady.set(false);
-      engineStatus.set('error');
+      
+      // Set appropriate status based on error
+      if (error.message && error.message.includes('cross-origin iframes')) {
+        engineStatus.set('iframe-disabled');
+      } else {
+        engineStatus.set('error');
+      }
     }
   }
 
@@ -103,7 +123,7 @@ class Stockfish {
       const script = document.createElement('script');
       script.src = '/nnue/stockfish.js';
       script.onload = () => {
-        console.log('✅ Stockfish script loaded');
+        // Stockfish script loaded
         resolve();
       };
       script.onerror = (error) => {
@@ -116,7 +136,7 @@ class Stockfish {
 
   _handleMessage(message) {
     if (message === 'uciok') {
-      console.log('✅ UCI protocol initialized');
+      // UCI protocol initialized
       engineStatus.set('initializing');
       this.engine.postMessage('isready');
       return;
@@ -126,20 +146,20 @@ class Stockfish {
       this.isReady = true;
       engineReady.set(true);
       engineStatus.set('ready');
-      console.log('✅ Engine is ready for UCI commands');
+      // Engine is ready for UCI commands
       return;
     }
 
     if (message.startsWith('bestmove')) {
-      console.log('🎯 Received bestmove:', message);
+      // Received bestmove
       
       const match = message.match(/^bestmove\s+(\S+)/);
       if (match) {
         const move = match[1];
-        console.log('🎯 Parsed move:', move);
+        // Parsed move
         
         if (this.currentRequest) {
-          console.log('🎯 Resolving promise with move:', move);
+          // Resolving promise with move
           // Include the last evaluation in the result
           this.currentRequest.resolve({ 
             move,
@@ -147,7 +167,7 @@ class Stockfish {
           });
           this.currentRequest = null;
         } else {
-          console.warn('⚠️ Received bestmove but no pending request');
+          // Received bestmove but no pending request
         }
       } else {
         console.error('❌ Failed to parse bestmove message:', message);
@@ -166,9 +186,7 @@ class Stockfish {
     }
     
     // Log other important UCI messages
-    if (!message.startsWith('info')) {
-      console.log('📝 UCI:', message);
-    }
+    // UCI message received
   }
 
   _parseInfoMessage(message) {
@@ -229,7 +247,7 @@ class Stockfish {
     
     // Check if there's already a pending request
     if (this.currentRequest) {
-      console.warn('⚠️ Cancelling previous request');
+      // Cancelling previous request
       this.currentRequest.reject(new Error('Request cancelled by new request'));
       this.currentRequest = null;
     }
@@ -237,7 +255,7 @@ class Stockfish {
     await this._waitForReady();
     
     const level = eloToLevel(elo);
-    console.log(`🎯 Getting best move for ELO ${elo} (level ${level})`);
+    // Getting best move
     
     // Set skill level using UCI
     this.engine.postMessage(`setoption name Skill Level value ${level}`);
@@ -277,7 +295,7 @@ class Stockfish {
       };
       
       // Send the UCI go command
-      console.log(`➡️ Sending: go movetime ${timeMs}`);
+      // Sending go command
       this.engine.postMessage(`go movetime ${timeMs}`);
     });
   }
@@ -285,9 +303,9 @@ class Stockfish {
   // Simple test method
   async testEngine() {
     try {
-      console.log('🧪 Testing engine with starting position...');
+      // Testing engine with starting position
       const result = await this.getBestMove('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 1500, 2000);
-      console.log('🧪 Engine test successful:', result);
+      // Engine test successful
       return result;
     } catch (error) {
       console.error('🧪 Engine test failed:', error);
@@ -297,12 +315,12 @@ class Stockfish {
 
   destroy() {
     if (this.engine) {
-      console.log('🔄 Terminating Stockfish engine...');
+      // Terminating Stockfish engine
       this.engine.postMessage('quit');
       this.engine.terminate();
       this.engine = null;
       this.isReady = false;
-      console.log('✅ Stockfish engine terminated');
+      // Stockfish engine terminated
     }
   }
 }

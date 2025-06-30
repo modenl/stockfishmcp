@@ -15,11 +15,15 @@ function createWebSocketStore() {
   function connect(url) {
     if (typeof window === 'undefined') return;
 
+    // WebSocket: Attempting to connect
+    
     try {
       const socket = new WebSocket(url);
+      
+      // WebSocket: Socket created, waiting for connection
 
       socket.onopen = () => {
-        console.log('WebSocket connected');
+        // WebSocket connected successfully
         reconnectAttempts = 0;
         update(state => ({
           ...state,
@@ -32,7 +36,7 @@ function createWebSocketStore() {
       socket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          console.log('📨 WebSocket message:', message.type || 'unknown');
+          // WebSocket message received
           update(state => ({
             ...state,
             lastMessage: message
@@ -43,7 +47,7 @@ function createWebSocketStore() {
       };
 
       socket.onclose = (event) => {
-        console.log('WebSocket disconnected:', event.code, event.reason);
+        // WebSocket disconnected
         update(state => ({
           ...state,
           isConnected: false,
@@ -54,7 +58,7 @@ function createWebSocketStore() {
         // Attempt to reconnect
         if (reconnectAttempts < maxReconnectAttempts) {
           reconnectAttempts++;
-          console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
+          // Attempting to reconnect
           
           update(state => ({
             ...state,
@@ -74,9 +78,7 @@ function createWebSocketStore() {
       };
 
       socket.onerror = (error) => {
-        console.error('❌ WebSocket error:', error);
-        // Don't update state to 'error' immediately, let onclose handle reconnection
-        console.log('WebSocket error occurred, waiting for onclose to handle reconnection');
+        // WebSocket error occurred
       };
 
     } catch (error) {
@@ -108,16 +110,12 @@ function createWebSocketStore() {
         try {
           const messageStr = JSON.stringify(message);
           state.socket.send(messageStr);
-          console.log('📤 Sent WebSocket message:', message.type, message);
+          // Sent WebSocket message
         } catch (error) {
           console.error('❌ Failed to send WebSocket message:', error, 'Message:', message);
         }
       } else {
-        console.warn('⚠️ Cannot send message: WebSocket not connected. State:', {
-          hasSocket: !!state.socket,
-          isConnected: state.isConnected,
-          connectionStatus: state.connectionStatus
-        });
+        // Cannot send message: WebSocket not connected
       }
       return state;
     });

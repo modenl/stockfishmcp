@@ -58,9 +58,11 @@
 /* Game Area */
 .board-and-moves {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) 350px;
-  gap: 2rem;
+  /* Grid template is set dynamically via inline style */
   align-items: start;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
 }
 
 .board-container {
@@ -107,6 +109,13 @@
   top: 6rem;
   max-height: calc(100vh - 8rem);
   overflow-y: auto;
+}
+
+@media (max-width: 768px) {
+  .side-panel {
+    position: static;
+    max-height: none;
+  }
 }
 
 /* Replay Mode */
@@ -233,14 +242,10 @@
 
 /* Responsive Design */
 @media (max-width: 1024px) {
-  .board-and-moves {
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
-  }
-  
   .side-panel {
     position: static;
     max-height: none;
+    max-width: 100%;
   }
   
   .main-content {
@@ -262,19 +267,21 @@
     gap: 1rem;
   }
   
-  .board-and-moves {
-    gap: 1rem;
-  }
-  
   .chess-board-wrapper {
     padding: 0.75rem;
   }
   
   .side-panel {
     padding: 1rem;
+    width: 100%;
   }
   
-
+  /* Ensure board container takes full width on mobile */
+  .board-container {
+    width: 100%;
+    max-width: 512px;
+    margin: 0 auto;
+  }
 }
 
 @media (max-width: 480px) {

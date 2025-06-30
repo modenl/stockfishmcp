@@ -10,11 +10,8 @@
     "lint": "eslint . --ext js,svelte --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "chessground": "^8.3.11",
+    "chessground": "^9.2.1",
     "chessops": "^0.12.8",
-    "fairy-stockfish-nnue.wasm": "^1.1.9-bookgen.1",
-    "ffish": "^0.7.8",
-    "ffish-es6": "^0.7.8",
     "lucide-svelte": "^0.519.0"
   },
   "devDependencies": {

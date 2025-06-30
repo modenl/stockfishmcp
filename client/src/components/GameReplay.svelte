@@ -2,16 +2,14 @@
   import { onMount, onDestroy } from 'svelte';
   import { Chess } from 'chessops/chess';
   import { parseFen, makeFen } from 'chessops/fen';
-  import { parseUci, makeUci } from 'chessops/util';
+  import { parseUci } from 'chessops/util';
   import { parseSan, makeSan } from 'chessops/san';
-  import { chessgroundDests, chessgroundMove } from 'chessops/compat';
+  import { chessgroundDests } from 'chessops/compat';
   import { languageStore } from '../stores/language.js';
 
   export let gameData = null;
   export let onClose = () => {};
 
-  let boardElement;
-  let chessground;
   let chess;
   let currentMoveIndex = -1;
   let moves = [];
@@ -19,8 +17,9 @@
   let isPlaying = false;
   let playInterval = null;
   let playSpeed = gameData?.delayMs || 1000;
+  let chessground;
+  let boardElement;
   
-  // 高级功能控制变量
   let showLastMove = true;
   let showCheck = true;
   let showMoveAnimation = true;
@@ -31,65 +30,45 @@
   $: t = languageStore.translations[currentLang];
 
   onMount(async () => {
-    try {
-      console.log('🎬 GameReplay: Starting initialization...');
-      console.log('📊 GameReplay: gameData received:', gameData);
+    const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    const setup = parseFen(startingFen).unwrap();
+    chess = Chess.fromSetup(setup).unwrap();
+    
+    if (gameData && gameData.moves) {
+      moves = gameData.moves;
+      positions = [startingFen];
       
-      const { Chessground } = await import('chessground');
-      console.log('✅ GameReplay: Chessground imported successfully');
+      const tempChess = Chess.fromSetup(setup).unwrap();
       
-      const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-      const setup = parseFen(startingFen).unwrap();
-      chess = Chess.fromSetup(setup).unwrap();
-      console.log('✅ GameReplay: Chess engine initialized');
-      
-      if (gameData && gameData.moves) {
-        moves = gameData.moves;
-        positions = [startingFen];
-        console.log('GameReplay: Loading game data with', moves.length, 'moves');
-        
-        // 使用 chessops 重放所有移动，无需胶水代码
-        const tempChess = Chess.fromSetup(setup).unwrap();
-        console.log('GameReplay: Starting replay with', moves.length, 'moves');
-        console.log('GameReplay: Initial FEN:', makeFen(tempChess.toSetup()));
-        
-        for (let i = 0; i < moves.length; i++) {
-          const move = moves[i];
-          try {
-            let parsedMove;
-            
-            // 直接使用 chessops 的解析功能
-            if (move.uci) {
-              parsedMove = parseUci(move.uci);
-            } else if (move.from && move.to) {
-              parsedMove = parseUci(move.from + move.to + (move.promotion || ''));
-            } else if (move.san) {
-              // chessops 完美支持 SAN
-              parsedMove = parseSan(tempChess, move.san);
-            }
-            
-            console.log(`GameReplay: Processing move ${i + 1}/${moves.length}:`, move);
-            
-            if (parsedMove && tempChess.isLegal(parsedMove)) {
-              tempChess.play(parsedMove);
-              const newFen = makeFen(tempChess.toSetup());
-              positions.push(newFen);
-              console.log(`  ✅ Move ${i + 1} applied successfully. New FEN:`, newFen);
-            } else {
-              console.warn(`❌ Could not parse/apply move ${i + 1}:`, move);
-              console.warn('  - parsedMove:', parsedMove);
-              console.warn('  - current FEN:', makeFen(tempChess.toSetup()));
-              console.warn('  - isLegal:', parsedMove ? tempChess.isLegal(parsedMove) : 'N/A (parsedMove is null)');
-              
-              // Skip this move and continue with current position
-              positions.push(makeFen(tempChess.toSetup()));
-            }
-          } catch (error) {
-            console.error('Error replaying move:', move, error);
+      for (let i = 0; i < moves.length; i++) {
+        const move = moves[i];
+        try {
+          let parsedMove;
+          
+          if (move.uci) {
+            parsedMove = parseUci(move.uci);
+          } else if (move.from && move.to) {
+            parsedMove = parseUci(move.from + move.to + (move.promotion || ''));
+          } else if (move.san) {
+            parsedMove = parseSan(tempChess, move.san);
+          }
+          
+          if (parsedMove && tempChess.isLegal(parsedMove)) {
+            tempChess.play(parsedMove);
+            const newFen = makeFen(tempChess.toSetup());
+            positions.push(newFen);
+          } else {
             positions.push(makeFen(tempChess.toSetup()));
           }
+        } catch (error) {
+          console.error('Error replaying move:', move, error);
+          positions.push(makeFen(tempChess.toSetup()));
         }
       }
+    }
+    
+    try {
+      const { Chessground } = await import('chessground');
       
       chessground = Chessground(boardElement, {
         fen: startingFen,
@@ -98,7 +77,7 @@
         movable: {
           free: false,
           color: undefined,
-          dests: new Map() // 使用 chessgroundDests 时会自动填充
+          dests: new Map()
         },
         viewOnly: true,
         coordinates: true,
@@ -114,36 +93,30 @@
           lastMove: showLastMove,
           check: showCheck
         },
-        check: false // 开始位置没有将军，不应该显示红色
+        check: false
       });
-
-      console.log('Game replay initialized successfully');
       
-      // Check if auto-play is enabled
       if (gameData?.autoPlay && moves.length > 0) {
-        console.log('🎬 Auto-play enabled, starting playback...');
-        console.log('📊 Auto-play settings:', { autoPlay: gameData.autoPlay, delayMs: gameData.delayMs });
-        // Small delay to ensure UI is ready
         setTimeout(() => {
           toggleAutoPlay();
         }, 100);
       }
     } catch (error) {
-      console.error('Failed to initialize game replay:', error);
+      console.error('Failed to load Chessground:', error);
     }
   });
 
   onDestroy(() => {
-    if (chessground) {
-      chessground.destroy();
-    }
     if (playInterval) {
       clearInterval(playInterval);
+    }
+    if (chessground) {
+      chessground.destroy();
     }
   });
 
   function goToMove(moveIndex) {
-    if (moveIndex < -1 || moveIndex >= moves.length || !chessground) {
+    if (moveIndex < -1 || moveIndex >= moves.length) {
       return;
     }
     
@@ -154,35 +127,32 @@
       const setup = parseFen(targetFen).unwrap();
       chess = Chess.fromSetup(setup).unwrap();
       
-      // 使用 chessops/compat 的完美集成
       const isInCheck = chess.isCheck();
-      const config = {
-        fen: targetFen,
-        turnColor: setup.turn === 'white' ? 'white' : 'black',
-        check: showCheck && isInCheck, // 只有在真正将军时才显示红色
-        // 直接使用 chessgroundDests，无需任何转换
-        movable: {
-          dests: chessgroundDests(chess)
-        }
-      };
       
-      console.log(`Move ${moveIndex}: isInCheck=${isInCheck}, showCheck=${showCheck}, check=${config.check}`);
+      if (chessground) {
+        chessground.set({
+          fen: targetFen,
+          turnColor: setup.turn === 'white' ? 'white' : 'black',
+          check: showCheck && isInCheck,
+          movable: {
+            free: false,
+            color: undefined,
+            dests: chessgroundDests(chess)
+          }
+        });
+      }
 
-      // 添加最后一步移动高亮
       if (moveIndex >= 0 && showLastMove && moves[moveIndex]) {
         const move = moves[moveIndex];
-        console.log('🔍 Processing move for lastMove highlight:', move);
         
         if (move.uci && typeof move.uci === 'string' && move.uci.length >= 4) {
           try {
             const from = move.uci.substring(0, 2);
             const to = move.uci.substring(2, 4);
-            // 验证坐标格式
             if (/^[a-h][1-8]$/.test(from) && /^[a-h][1-8]$/.test(to)) {
-              config.lastMove = [from, to];
-              console.log('✅ Set lastMove from UCI:', config.lastMove);
-            } else {
-              console.warn('❌ Invalid UCI coordinates:', from, to);
+              if (chessground) {
+                chessground.set({ lastMove: [from, to] });
+              }
             }
           } catch (e) {
             console.error('Error parsing UCI for lastMove:', e);
@@ -190,19 +160,17 @@
         } else if (move.from && move.to && 
                    typeof move.from === 'string' && 
                    typeof move.to === 'string') {
-          // 验证坐标格式
           if (/^[a-h][1-8]$/.test(move.from) && /^[a-h][1-8]$/.test(move.to)) {
-            config.lastMove = [move.from, move.to];
-            console.log('✅ Set lastMove from from/to:', config.lastMove);
-          } else {
-            console.warn('❌ Invalid from/to coordinates:', move.from, move.to);
+            if (chessground) {
+              chessground.set({ lastMove: [move.from, move.to] });
+            }
           }
         }
       } else {
-        config.lastMove = undefined;
+        if (chessground) {
+          chessground.set({ lastMove: undefined });
+        }
       }
-
-      chessground.set(config);
 
       if (showShapes) {
         updateShapes(moveIndex);
@@ -270,26 +238,24 @@
   function toggleLastMove() {
     showLastMove = !showLastMove;
     if (chessground) {
-      chessground.set({ 
+      chessground.set({
         highlight: { 
           lastMove: showLastMove,
           check: showCheck 
-        } 
+        }
       });
     }
-    // 刷新当前位置以应用设置
     goToMove(currentMoveIndex);
   }
 
   function toggleCheck() {
     showCheck = !showCheck;
     if (chessground) {
-      chessground.set({ 
-        check: showCheck,
+      chessground.set({
         highlight: { 
           lastMove: showLastMove,
           check: showCheck 
-        } 
+        }
       });
     }
     goToMove(currentMoveIndex);
@@ -298,11 +264,11 @@
   function toggleAnimation() {
     showMoveAnimation = !showMoveAnimation;
     if (chessground) {
-      chessground.set({ 
+      chessground.set({
         animation: { 
           enabled: showMoveAnimation,
           duration: 200 
-        } 
+        }
       });
     }
   }
@@ -310,22 +276,22 @@
   function toggleShapes() {
     showShapes = !showShapes;
     if (chessground) {
-      chessground.set({ 
+      chessground.set({
         drawable: { 
           enabled: true,
           visible: showShapes 
-        } 
+        }
       });
-    }
-    if (showShapes) {
-      updateShapes(currentMoveIndex);
-    } else {
-      chessground.setShapes([]);
+      if (showShapes) {
+        updateShapes(currentMoveIndex);
+      } else {
+        chessground.setShapes([]);
+      }
     }
   }
 
   function updateShapes(moveIndex) {
-    if (!chessground || !showShapes || moveIndex < 0) return;
+    if (!showShapes || moveIndex < 0) return;
     
     const shapes = [];
     const move = moves[moveIndex];
@@ -333,7 +299,6 @@
     if (move) {
       let from, to;
       
-      // 从 UCI 或 from/to 属性中提取坐标
       if (move.uci && typeof move.uci === 'string' && move.uci.length >= 4) {
         from = move.uci.substring(0, 2);
         to = move.uci.substring(2, 4);
@@ -342,20 +307,17 @@
         to = move.to;
       }
       
-      // 验证坐标格式
       if (from && to && 
           typeof from === 'string' && 
           typeof to === 'string' &&
           /^[a-h][1-8]$/.test(from) && 
           /^[a-h][1-8]$/.test(to)) {
-        // 添加移动箭头
         shapes.push({
           orig: from,
           dest: to,
           brush: 'green'
         });
         
-        // 如果是吃子，标记被吃的格子
         if (move.captured) {
           shapes.push({
             orig: to,
@@ -365,7 +327,9 @@
       }
     }
     
-    chessground.setShapes(shapes);
+    if (chessground) {
+      chessground.setShapes(shapes);
+    }
   }
 
   function getMoveDisplayText(move, index) {
@@ -393,9 +357,8 @@
 
 <div class="game-replay">
   <div class="replay-header">
-    <h3>{t.gameReplay || 'Game Replay'}</h3>
+    <h3>{t?.gameReplay || 'Game Replay'}</h3>
     <div class="header-controls">
-      <!-- 视觉控制按钮 -->
       <div class="visual-controls">
         <button class="control-btn small" on:click={flipBoard} title="翻转棋盘 / Flip Board">
           🔄
@@ -444,7 +407,7 @@
       </div>
 
       <div class="speed-controls">
-        <label for="speed-select">{t.playSpeed || 'Speed'}:</label>
+        <label for="speed-select">{t?.playSpeed || 'Speed'}:</label>
         <select id="speed-select" bind:value={playSpeed} on:change={() => setPlaySpeed(playSpeed)}>
           <option value={2000}>0.5x</option>
           <option value={1000}>1x</option>
@@ -455,7 +418,7 @@
 
       <div class="position-info">
         <div class="move-counter">
-          {t.move || 'Move'}: {currentMoveIndex + 1} / {moves.length}
+          {t?.move || 'Move'}: {currentMoveIndex + 1} / {moves.length}
         </div>
         {#if currentMoveIndex >= 0}
           <div class="current-move">
@@ -463,23 +426,23 @@
           </div>
         {:else}
           <div class="current-move">
-            {t.startingPosition || 'Starting Position'}
+            {t?.startingPosition || 'Starting Position'}
           </div>
         {/if}
         <div class="board-orientation">
-          {t.viewing || 'Viewing'}: {boardOrientation === 'white' ? (t.white || 'White') : (t.black || 'Black')}
+          {t?.viewing || 'Viewing'}: {boardOrientation === 'white' ? (t?.white || 'White') : (t?.black || 'Black')}
         </div>
       </div>
     </div>
 
     <div class="moves-section">
-      <h4>{t.moveHistory || 'Move History'}</h4>
+      <h4>{t?.moveHistory || 'Move History'}</h4>
       <div class="moves-list">
         <div class="move-item starting-position" 
              class:active={currentMoveIndex === -1}
              on:click={() => goToMove(-1)}>
           <span class="move-number">0.</span>
-          <span class="move-notation">{t.startingPosition || 'Starting Position'}</span>
+          <span class="move-notation">{t?.startingPosition || 'Starting Position'}</span>
         </div>
         
         {#each moves as move, index}
@@ -499,7 +462,6 @@
             {#if move.comments && move.comments.length > 0}
               <span class="move-comment">{move.comments[0]}</span>
             {/if}
-            <!-- 移动标记 -->
             {#if move.san}
               {#if move.san.includes('+')}
                 <span class="move-symbol check">+</span>
@@ -523,36 +485,36 @@
   {#if gameData}
     <div class="game-info">
       <div class="game-header">
-        <h4>{t.gameInformation || 'Game Information'}</h4>
+        <h4>{t?.gameInformation || 'Game Information'}</h4>
       </div>
       <div class="info-grid">
         {#if gameData.white}
           <div class="info-item">
-            <span class="info-label">{t.white || 'White'}:</span>
+            <span class="info-label">{t?.white || 'White'}:</span>
             <span class="info-value">{gameData.white}</span>
           </div>
         {/if}
         {#if gameData.black}
           <div class="info-item">
-            <span class="info-label">{t.black || 'Black'}:</span>
+            <span class="info-label">{t?.black || 'Black'}:</span>
             <span class="info-value">{gameData.black}</span>
           </div>
         {/if}
         {#if gameData.result}
           <div class="info-item">
-            <span class="info-label">{t.result || 'Result'}:</span>
+            <span class="info-label">{t?.result || 'Result'}:</span>
             <span class="info-value">{getGameResult()}</span>
           </div>
         {/if}
         {#if gameData.date}
           <div class="info-item">
-            <span class="info-label">{t.date || 'Date'}:</span>
+            <span class="info-label">{t?.date || 'Date'}:</span>
             <span class="info-value">{gameData.date}</span>
           </div>
         {/if}
         {#if gameData.event}
           <div class="info-item">
-            <span class="info-label">{t.event || 'Event'}:</span>
+            <span class="info-label">{t?.event || 'Event'}:</span>
             <span class="info-value">{gameData.event}</span>
           </div>
         {/if}
@@ -653,6 +615,12 @@
   .chess-board {
     width: 100%;
     height: 100%;
+  }
+  
+  :global(.board-container .cg-wrap) {
+    width: 100% !important;
+    height: 100% !important;
+    position: relative;
   }
 
   .playback-controls {
@@ -868,4 +836,4 @@
       max-height: 200px;
     }
   }
-</style> 
+</style>
