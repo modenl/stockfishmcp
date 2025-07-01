@@ -10,7 +10,6 @@
   export let turn = 'white';
   export let aiThinking = false;
   export let inCheck = false;
-  export let sessionId = '...';
   export let clientName = 'Player';
   export let connectedClients = [];
   export let clientId = '...';

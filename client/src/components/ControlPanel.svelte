@@ -1,5 +1,6 @@
 <script>
   import { languageStore } from '../stores/language.js';
+  import { themeStore, toggleTheme } from '../stores/theme.js';
   
   export let gameState;
   export let analysisResult = null;
@@ -20,6 +21,7 @@
   
   $: currentLang = $languageStore;
   $: t = languageStore.translations[currentLang];
+  $: currentTheme = $themeStore;
 
   function handleNewGameClick() {
     onShowNewGameModal();
@@ -43,6 +45,7 @@
       case 'checkmate': return t.checkmate || 'Checkmate';
       case 'stalemate': return t.stalemate || 'Stalemate';
       case 'draw': return t.draw || 'Draw';
+      case 'resigned': return t.resigned || 'Resigned';
       default: return status;
     }
   }
@@ -67,9 +70,14 @@
 <div class="control-panel">
   <div class="panel-header">
     <h3>{t.gameInfo}</h3>
-    <button class="language-btn" on:click={toggleLanguageSettings} title={t.language}>
-      🌐
-    </button>
+    <div class="header-buttons">
+      <button class="theme-btn" on:click={toggleTheme} title={currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
+        {currentTheme === 'dark' ? '☀️' : '🌙'}
+      </button>
+      <button class="language-btn" on:click={toggleLanguageSettings} title={t.language}>
+        🌐
+      </button>
+    </div>
   </div>
   
   {#if showLanguageSettings}
@@ -146,7 +154,7 @@
       {t.newGame}
     </button>
     
-    {#if gameState.status === 'playing' || (gameState.status !== 'checkmate' && gameState.status !== 'stalemate' && gameState.status !== 'draw' && gameState.status !== 'ended')}
+    {#if gameState.status === 'playing' || (gameState.status !== 'checkmate' && gameState.status !== 'stalemate' && gameState.status !== 'draw' && gameState.status !== 'ended' && gameState.status !== 'resigned')}
       <button 
         class="btn btn-secondary resign-button" 
         on:click={() => {
@@ -292,7 +300,13 @@
     font-weight: 600;
   }
 
-  .language-btn {
+  .header-buttons {
+    display: flex;
+    gap: var(--spacing-xs);
+  }
+
+  .language-btn,
+  .theme-btn {
     background: none;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -302,7 +316,8 @@
     transition: all 0.2s ease;
   }
 
-  .language-btn:hover {
+  .language-btn:hover,
+  .theme-btn:hover {
     background: var(--surface-hover);
     border-color: var(--primary);
   }

@@ -7,6 +7,7 @@
   import GameReplay from './components/GameReplay.svelte';
   import { webSocketStore } from './stores/websocket.js';
   import { languageStore } from './stores/language.js';
+  import { themeStore } from './stores/theme.js';
   import stockfish, { engineReady, engineStatus } from './lib/stockfish.js';
   import { Chess } from 'chessops/chess';
   import { makeFen, parseFen } from 'chessops/fen';
@@ -141,10 +142,11 @@
 
   let unsubscribeWS;
 
-  let sessionId = 'test_game_123'; // Default game session
+  // No longer need sessionId - only one game exists
   let clientId = generateClientId(); // Unique client identifier
   let clientName = generateClientName(); // Human-readable client name
   let connectedClients = []; // List of connected clients
+  let boardKey = 0; // Key to force ChessBoard re-render
 
   // Generate unique client ID
   function generateClientId() {
@@ -163,6 +165,10 @@
   onMount(() => {
     // App initialization
     
+    // Initialize theme
+    const savedTheme = localStorage.getItem('theme') || 'dark';
+    document.documentElement.classList.add(savedTheme);
+    
     // stockfish service initializes itself automatically.
     unsubscribeWS = webSocketStore.subscribe(({ lastMessage }) => {
       if (lastMessage) handleWebSocketMessage(lastMessage);
@@ -175,8 +181,9 @@
       // Connect to WebSocket server
       // In WebView, hostname might be empty or different, so we use localhost as fallback
       const hostname = window.location.hostname || 'localhost';
-      const wsUrl = `ws://${hostname}:3456`;
-      // Connecting to WebSocket
+      const port = window.location.port || '3456';
+      const wsUrl = `ws://${hostname}:${port}/ws`;
+      console.log('🔌 Connecting to WebSocket:', wsUrl);
       
       try {
         webSocketStore.connect(wsUrl);
@@ -199,7 +206,6 @@
         // WebSocket connected, joining session
         webSocketStore.sendMessage({
           type: 'join_session',
-          sessionId: sessionId,
           clientId: clientId,
           clientName: clientName
         });
@@ -238,18 +244,13 @@
       case 'mcp_move':
         // Received mcp_move
         // Only handle moves for the current session/game
-        if (message.sessionId === sessionId) {
-          // SessionId matches, handling move
-          handleServerMove(message);
-        } else {
-          // SessionId mismatch, ignoring move
-        }
+        // Handle move from server
+        handleServerMove(message);
         break;
       case 'mcp_game_reset':
         // Handle game reset from server
-        if (message.gameId === sessionId) {
-          handleServerReset(message);
-        }
+        console.log('🎮 CLIENT: Received mcp_game_reset message:', message);
+        handleServerReset(message);
         break;
       case 'client_joined':
         // Handle new client joining
@@ -298,7 +299,7 @@
         if (message.result) {
           // Update local game state to reflect the resignation
           if (message.result.reason === 'resignation') {
-            gameState.status = 'checkmate'; // Use checkmate status for UI consistency
+            gameState.status = 'resigned'; // Use resigned status
             gameState.winner = message.result.winner;
             gameState.aiThinking = false;
             
@@ -377,38 +378,51 @@
   }
 
   function handleServerReset(resetData) {
+    console.log('🔄 CLIENT: handleServerReset called with data:', resetData);
     // Received game reset from server
+    
+    // Close any open modals first
+    showGameModeModal = false;
+    showReplayMode = false;
+    replayGameData = null;
     
     // Reset the game engine to starting position
     game = Chess.default();
     
-    // Reset game state
-    gameState.fen = resetData.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-    gameState.turn = resetData.turn || 'white';
-    gameState.moves = [];
-    gameState.currentMoveIndex = -1;
-    gameState.status = 'playing';
-    gameState.inCheck = false;
-    gameState.winner = null;
-    gameState.aiThinking = false;
-    
-    // Apply game settings from server if provided
-    if (resetData.gameSettings) {
-      gameState.mode = resetData.gameSettings.mode;
-      gameState.playerColor = resetData.gameSettings.playerColor;
-      gameState.aiEloRating = resetData.gameSettings.aiEloRating;
-      gameState.aiTimeLimit = resetData.gameSettings.aiTimeLimit;
-      
-      // Applied game settings from server
-    }
+    // Create a new gameState object to ensure Svelte detects the change
+    const newGameState = {
+      fen: resetData.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      turn: resetData.turn || 'white',
+      moves: [],
+      currentMoveIndex: -1,
+      status: 'playing',
+      inCheck: false,
+      winner: null,
+      aiThinking: false,
+      // Apply game settings from server if provided
+      mode: resetData.gameSettings?.mode || 'human_vs_human',
+      playerColor: resetData.gameSettings?.playerColor || 'white',
+      aiEloRating: resetData.gameSettings?.aiEloRating || 1500,
+      aiTimeLimit: resetData.gameSettings?.aiTimeLimit || 500
+    };
     
     // Reset UI state (clear highlighted squares and selections)
-    uiState.selectedSquare = null;
-    uiState.highlightedSquares = [];
+    uiState = {
+      selectedSquare: null,
+      highlightedSquares: []
+    };
     
-    updateGameState();
+    // Assign the new game state
+    gameState = newGameState;
+    
+    // Force ChessBoard to re-render by changing key
+    boardKey = boardKey + 1;
     
     // Game reset applied locally
+    console.log('🔄 CLIENT: Game state after reset:', gameState);
+    console.log('🔄 CLIENT: Game mode:', gameState.mode);
+    console.log('🔄 CLIENT: Player color:', gameState.playerColor);
+    console.log('🔄 CLIENT: Board key:', boardKey);
     
     // Check if AI should move first (if player chose black)
     if (
@@ -417,7 +431,7 @@
       gameState.turn !== gameState.playerColor &&
       !gameState.aiThinking
     ) {
-      // AI should move first after reset
+      console.log('🤖 CLIENT: AI should move first after reset');
       setTimeout(() => makeAIMove(), 500);
     }
   }
@@ -566,7 +580,6 @@
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ 
-          game_id: sessionId,
           client_id: clientId,
           client_name: clientName
         })
@@ -646,7 +659,6 @@
       // Send move via WebSocket instead of HTTP
       webSocketStore.sendMessage({
         type: 'sync_move',
-        sessionId: sessionId,
         clientId: clientId,
         clientName: clientName,
         move: {
@@ -664,31 +676,39 @@
   }
 
   async function syncNewGameToServer() {
-    try {
-      // Syncing new game to server with settings
+    console.log('📤 CLIENT: syncNewGameToServer called');
+    console.log('📤 CLIENT: Current gameState:', gameState);
+    console.log('📤 CLIENT: WebSocket state:', $webSocketStore);
+    
+    // Check if WebSocket is connected
+    if (!$webSocketStore.isConnected) {
+      console.error('❌ WebSocket not connected, cannot sync new game');
+      // Try to reconnect
+      const hostname = window.location.hostname || 'localhost';
+      const port = window.location.port || '3456';
+      const wsUrl = `ws://${hostname}:${port}/ws`;
+      webSocketStore.connect(wsUrl);
       
-      const response = await fetch('/api/mcp/reset_game', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          game_id: sessionId,  // Use sessionId instead of hardcoded value
-          gameSettings: {
-            mode: gameState.mode,
-            playerColor: gameState.playerColor,
-            aiEloRating: gameState.aiEloRating,
-            aiTimeLimit: gameState.aiTimeLimit
-          }
-        })
+      // Wait a bit and retry
+      setTimeout(() => syncNewGameToServer(), 1000);
+      return;
+    }
+    
+    try {
+      // Send reset via WebSocket instead of HTTP
+      webSocketStore.sendMessage({
+        type: 'reset_game',
+        clientId: clientId,
+        clientName: clientName,
+        gameSettings: {
+          mode: gameState.mode,
+          playerColor: gameState.playerColor,
+          aiEloRating: gameState.aiEloRating,
+          aiTimeLimit: gameState.aiTimeLimit
+        }
       });
       
-      if (response.ok) {
-        const result = await response.json();
-        // New game synced to server successfully
-      } else {
-        console.error('❌ Failed to sync new game to server');
-      }
+      console.log('✅ CLIENT: Reset request sent via WebSocket');
     } catch (error) {
       console.error('❌ Error syncing new game to server:', error);
     }
@@ -753,7 +773,7 @@
     if (!game) return;
 
     // Don't override status if game was resigned
-    if (gameState.status === 'checkmate' && gameState.winner && !game.isCheckmate()) {
+    if (gameState.status === 'resigned' && gameState.winner) {
       // Game already ended (resignation), keeping status
       return;
     }
@@ -857,22 +877,29 @@
   }
 
   async function handleNewGame(mode, playerColor, aiElo, aiTimeLimit, syncToServer = true) {
+    console.log('🎮 CLIENT: handleNewGame called with:', { mode, playerColor, aiElo, aiTimeLimit, syncToServer });
     // Starting new game
     
     // Immediately clear UI state for better user experience
     uiState.selectedSquare = null;
     uiState.highlightedSquares = [];
     
-    // Update local settings first
-    gameState.mode = mode;
-    gameState.playerColor = playerColor;
-    gameState.aiEloRating = aiElo;
-    gameState.aiTimeLimit = aiTimeLimit;
+    // Update local settings first - create new gameState to ensure reactivity
+    gameState = {
+      ...gameState,
+      mode: mode,
+      playerColor: playerColor,
+      aiEloRating: aiElo,
+      aiTimeLimit: aiTimeLimit
+    };
+    
+    console.log('🎮 CLIENT: Updated gameState before sync:', gameState);
     
     // If we need to sync to server, do that and wait for server broadcast
     if (syncToServer) {
       await syncNewGameToServer();
       // Server will broadcast the reset, and we'll handle it in handleWebSocketMessage
+      console.log('🎮 CLIENT: Sync to server completed, waiting for broadcast');
     } else {
       // Only for local resets (shouldn't happen in new architecture)
       game = Chess.default();
@@ -916,7 +943,7 @@
       // Set the winner to the opponent
       const resigningColor = gameState.turn;
       gameState.winner = resigningColor === 'white' ? 'black' : 'white';
-      gameState.status = 'checkmate'; // Use checkmate status for resign
+      gameState.status = 'resigned'; // Use resigned status
       
       // Winner set by resignation
       
@@ -929,7 +956,6 @@
       try {
         webSocketStore.sendMessage({
           type: 'end_session',
-          sessionId: sessionId,
           result: {
             winner: gameState.winner,
             reason: 'resignation'
@@ -1094,6 +1120,9 @@
   }
   
   function startNewGame() {
+    console.log('🚀 CLIENT: startNewGame called');
+    console.log('🚀 CLIENT: Modal settings:', { selectedMode, selectedPlayerColor, aiEloRating, aiTimeLimit });
+    
     // Immediately clear UI state for better user experience
     uiState.selectedSquare = null;
     uiState.highlightedSquares = [];
@@ -1105,6 +1134,7 @@
     gameState.status = 'playing';
     gameState.winner = null;
     
+    console.log('🚀 CLIENT: Calling handleNewGame with:', selectedMode, selectedPlayerColor, aiEloRating, aiTimeLimit);
     handleNewGame(selectedMode, selectedPlayerColor, aiEloRating, aiTimeLimit);
   }
   
@@ -1384,7 +1414,6 @@
             turn={gameState.turn}
             aiThinking={gameState.aiThinking}
             inCheck={gameState.inCheck}
-            sessionId={sessionId}
             clientName={clientName}
             clientId={clientId}
             connectedClients={connectedClients}
@@ -1399,37 +1428,39 @@
     <div class="board-and-moves" style={boardGridStyle}>
       <div class="board-container">
         <div class="chess-board-wrapper">
-          <ChessBoard
-            fen={gameState.fen}
-            turn={gameState.turn}
-            boardWidth={boardWidth}
-            boardHeight={boardHeight}
-            on:move={event => {
-              // Move event received
-              
-              // Don't allow moves if we're in replay mode
-              if (showReplayMode) {
-                // Move blocked: in replay mode
-                return;
-              }
-              
-              // ChessBoard sends a move object, but we need the raw move
-              const moveData = event.detail;
-              const move = parseUci(moveData.uci);
-              if (move) {
-                handleMove(move);
-              } else {
-                console.error('Failed to parse move from ChessBoard:', moveData);
-              }
-            }}
-            selectedSquare={uiState.selectedSquare}
-            highlightedSquares={uiState.highlightedSquares}
-            playerColor={gameState.mode === 'human_vs_ai' ? gameState.playerColor : 'white'}
-            gameMode={gameState.mode}
-            aiThinking={gameState.aiThinking}
-            gameStatus={gameState.status}
-            replayMode={showReplayMode}
-          />
+          {#key boardKey}
+            <ChessBoard
+              fen={gameState.fen}
+              turn={gameState.turn}
+              boardWidth={boardWidth}
+              boardHeight={boardHeight}
+              on:move={event => {
+                // Move event received
+                
+                // Don't allow moves if we're in replay mode
+                if (showReplayMode) {
+                  // Move blocked: in replay mode
+                  return;
+                }
+                
+                // ChessBoard sends a move object, but we need the raw move
+                const moveData = event.detail;
+                const move = parseUci(moveData.uci);
+                if (move) {
+                  handleMove(move);
+                } else {
+                  console.error('Failed to parse move from ChessBoard:', moveData);
+                }
+              }}
+              selectedSquare={uiState.selectedSquare}
+              highlightedSquares={uiState.highlightedSquares}
+              playerColor={gameState.mode === 'human_vs_ai' ? gameState.playerColor : 'white'}
+              gameMode={gameState.mode}
+              aiThinking={gameState.aiThinking}
+              gameStatus={gameState.status}
+              replayMode={showReplayMode}
+            />
+          {/key}
           
           <!-- AI Thinking Overlay -->
           {#if gameState.aiThinking}

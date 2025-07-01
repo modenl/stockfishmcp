@@ -199,6 +199,7 @@
   // Reactive updates - combined to avoid conflicts
   // React to: fen, turn, aiThinking, disabled, gameStatus, playerColor changes
   $: if (chessground) {
+    console.log('🎯 ChessBoard: Updating board with new FEN:', fen);
     try {
       // Update chess position from FEN if it changed
       const setup = parseFen(fen).unwrap();
@@ -214,6 +215,7 @@
         },
         lastMove: highlightedSquares.length >= 2 ? [highlightedSquares[0], highlightedSquares[1]] : undefined
       });
+      console.log('🎯 ChessBoard: Board updated successfully');
     } catch (error) {
       console.error('Error updating board:', error);
     }
