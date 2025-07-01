@@ -14,24 +14,10 @@
   import { makeUci, parseUci } from 'chessops/util';
   import { makeSan, parseSan } from 'chessops/san';
   import './App.css';
-  
-  // ===== Embed / Iframe Configuration =====
-  const urlParams = new URLSearchParams(window.location.search);
-  const embedModeRaw = urlParams.get('mode') || '';
-  const embedMode = embedModeRaw.trim().toLowerCase();
-  const showControlsParam = urlParams.get('show_controls');
-  const allowMovesParam = urlParams.get('allow_moves');
-  const widthParam = urlParams.get('width');
-  const heightParam = urlParams.get('height');
-
-  // Flags derived from params
-  $: minimalMode = embedMode === 'minimal';
-  const showControls = showControlsParam === null ? true : !(showControlsParam === 'false' || showControlsParam === '0');
-  // allowMoves currently not enforced (for future use)
 
   // Board size configuration - make it responsive
-  let boardWidth = widthParam ? parseInt(widthParam, 10) || 512 : 512;
-  let boardHeight = heightParam ? parseInt(heightParam, 10) || boardWidth : boardWidth;
+  let boardWidth = 512;
+  let boardHeight = 512;
   
   // Update board size based on window size for responsive layout
   $: if (windowWidth < 768) {
@@ -43,9 +29,9 @@
     boardWidth = Math.min(windowWidth * 0.6, 500);
     boardHeight = boardWidth;
   } else {
-    // Desktop: use URL params or default
-    boardWidth = widthParam ? parseInt(widthParam, 10) || 512 : 512;
-    boardHeight = heightParam ? parseInt(heightParam, 10) || boardWidth : boardWidth;
+    // Desktop: default size
+    boardWidth = 512;
+    boardHeight = 512;
   }
 
   // Track window width for responsive layout
@@ -60,12 +46,8 @@
     return () => window.removeEventListener('resize', handleResize);
   });
 
-  // Reactive style for board layout (responsive and controls-aware)
+  // Reactive style for board layout (responsive)
   $: boardGridStyle = (() => {
-    if (!showControls || minimalMode) {
-      return 'grid-template-columns: 1fr;';
-    }
-    
     // For small screens (mobile), stack vertically
     if (windowWidth < 768) {
       return 'grid-template-columns: 1fr; gap: 1.5rem;';
@@ -812,13 +794,6 @@
 
     try {
       // Check if engine is available
-      if ($engineStatus === 'iframe-disabled') {
-        // AI is disabled in iframe mode
-        gameState.aiThinking = false;
-        updateGameState();
-        return;
-      }
-      
       if (!$engineReady) {
         // Chess engine not ready
         gameState.aiThinking = false;
@@ -1400,28 +1375,26 @@
 </script>
 
 <div class="app-container">
-  <!-- Header (hidden in minimal mode) -->
-  {#if !minimalMode}
-    <header class="app-header">
-      <div class="header-content">
-        <h1 class="app-title">Chess Trainer MCP</h1>
-        <div class="header-status">
-          <StatusBar
-            connectionStatus={$webSocketStore.connectionStatus}
-            engineReady={$engineReady}
-            engineStatus={$engineStatus}
-            gameStatus={gameState.status}
-            turn={gameState.turn}
-            aiThinking={gameState.aiThinking}
-            inCheck={gameState.inCheck}
-            clientName={clientName}
-            clientId={clientId}
-            connectedClients={connectedClients}
-          />
-        </div>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-content">
+      <h1 class="app-title">Chess Trainer MCP</h1>
+      <div class="header-status">
+        <StatusBar
+          connectionStatus={$webSocketStore.connectionStatus}
+          engineReady={$engineReady}
+          engineStatus={$engineStatus}
+          gameStatus={gameState.status}
+          turn={gameState.turn}
+          aiThinking={gameState.aiThinking}
+          inCheck={gameState.inCheck}
+          clientName={clientName}
+          clientId={clientId}
+          connectedClients={connectedClients}
+        />
       </div>
-    </header>
-  {/if}
+    </div>
+  </header>
 
   <!-- Main Content -->
   <main class="main-content">
@@ -1501,7 +1474,6 @@
         </div>
       </div>
       
-      {#if showControls && !minimalMode}
       <div class="side-panel">
         <!-- Only show ControlPanel when NOT in replay mode -->
         {#if !showReplayMode}
@@ -1529,7 +1501,6 @@
           </div>
         {/if}
       </div>
-      {/if}
     </div>
   </main>
 

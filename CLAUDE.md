@@ -32,7 +32,7 @@ This is a full-stack chess training application with MCP (Model Context Protocol
 - **Server (`server/`)**: Node.js + Express + WebSocket server providing:
   - Server-authoritative game state management
   - WebSocket-based real-time synchronization
-  - MCP server implementation with 14 chess analysis tools
+  - MCP server implementation with 15 chess analysis tools
   - Session management for multi-client support
 
 - **Client (`client/`)**: Svelte + Vite PWA with:
@@ -71,17 +71,3 @@ No automated test suite currently exists.
 ## MCP Integration
 
 The server exposes 15 MCP tools for chess analysis and game management. When working with MCP functionality, refer to the tool definitions in `mcpServer.js` and the MCP_USAGE_GUIDE.md for usage examples.
-
-### New Iframe Embedding Feature
-
-The latest version includes iframe embedding support:
-- **`get_embeddable_url`** tool: Generates embeddable URLs with customizable parameters
-- **`/embed` route**: Serves a minimal chess board interface suitable for iframe embedding
-- **PostMessage API**: Enables bidirectional communication between parent and embedded chess board
-- **MCP Capabilities**: Extended with experimental embedding support in protocol capabilities
-
-When implementing iframe features, ensure:
-1. Proper WebSocket connection handling in embedded contexts
-2. Cross-origin message validation for security
-3. Responsive design for various iframe dimensions
-4. Minimal UI mode for embedded views

@@ -102,8 +102,8 @@ Chess Trainer MCP Server provides 15 well-organized chess tools that can be used
 13. **`generate_pgn`** - Generate PGN notation from a list of moves
 14. **`explain_opening`** - Get explanation and principles of a chess opening
 
-**🌐 Embedding Tools:**
-15. **`get_embeddable_url`** - Get an embeddable URL for iframe integration
+**🌐 Web Access Tools:**
+15. **`get_embeddable_url`** - Get a URL to access the chess trainer web interface
 
 ## 🔧 MCP Host Configuration
 
@@ -726,81 +726,9 @@ Get explanation and principles of a chess opening.
 }
 ```
 
-### 🌐 Iframe Embedding
-
-The Chess Trainer now supports iframe embedding, allowing you to integrate the chess board into any web application.
-
-#### `get_embeddable_url`
-Get an embeddable URL for iframe integration with customizable options.
-```json
-{
-  "name": "get_embeddable_url",
-  "arguments": {
-    "game_id": "my-game",
-    "mode": "minimal",
-    "width": 600,
-    "height": 600,
-    "allow_moves": true,
-    "show_controls": false
-  }
-}
-```
-
-**Parameters:**
-- `game_id`: ID of the game to embed
-- `mode`: UI mode - `"full"`, `"board-only"`, or `"minimal"`
-- `width`/`height`: Dimensions of the embedded view (300-1200)
-- `allow_moves`: Whether users can make moves in the embedded view
-- `show_controls`: Whether to show game controls (reset, flip, hint)
-
-**Example Usage:**
-```html
-<iframe 
-  src="http://localhost:3456/embed?game_id=my-game&mode=minimal&width=600&height=600&allow_moves=true&show_controls=false"
-  width="600"
-  height="600"
-  frameborder="0"
-  allow="fullscreen"
-  style="border: 1px solid #ccc; border-radius: 8px;"
-></iframe>
-```
-
-**PostMessage API:**
-The embedded chess board supports bidirectional communication via postMessage:
-
-```javascript
-// Send commands to the chess board
-iframe.contentWindow.postMessage({
-  type: 'chess_command',
-  command: 'move',
-  move: 'e2e4',
-  san: 'e4'
-}, '*');
-
-// Listen for events from the chess board
-window.addEventListener('message', (event) => {
-  if (event.data.type === 'chess_move') {
-    console.log('Move made:', event.data.move, event.data.san);
-  }
-});
-```
-
-**Supported Commands:**
-- `reset`: Reset the game to starting position
-- `flip`: Flip the board orientation
-- `move`: Make a move (requires move and optionally san)
-- `load_fen`: Load a specific position (requires fen)
-
-**Events from Chess Board:**
-- `chess_move`: Fired when a move is made
-- `request_hint`: Fired when hint button is clicked (if controls shown)
-
 ## 📝 Changelog
 
 ### Version 1.0.11 (Latest)
-- **Iframe Embedding Support**: New `get_embeddable_url` tool and `/embed` route for iframe integration
-- **PostMessage API**: Bidirectional communication between parent and embedded chess board
-- **Extended MCP Capabilities**: Added experimental embedding capability to MCP protocol
 - **Reorganized MCP Tools**: Streamlined from 16 to 15 tools with better categorization
 - **Improved Tool Names**: Clearer, more descriptive tool names (e.g., `suggest_move` → `suggest_best_move`)
 - **Enhanced Server Startup**: Better error handling and retry logic for `launch_chess_trainer`
@@ -809,9 +737,9 @@ window.addEventListener('message', (event) => {
 - **Auto-Save Feature**: Games automatically saved every 30 seconds
 - **Inactive Game Cleanup**: Games inactive for 24 hours are automatically archived
 - **Removed Redundant Tools**: Eliminated confusing tools like `start_chess_ui`, `stop_chess_ui`, `start_chess_game`
-- **Added Tool Categories**: Server Management, Game Management, Game Interaction, Analysis Tools, Utility Tools, Embedding Tools
+- **Added Tool Categories**: Server Management, Game Management, Game Interaction, Analysis Tools, Utility Tools, Web Access Tools
 - **Fixed MCP SDK Integration**: Resolved Zod schema issues for proper tool registration
-- **Updated Documentation**: Comprehensive tool reference with examples and iframe embedding guide
+- **Updated Documentation**: Comprehensive tool reference with examples
 
 ### Version 1.0.10
 - Major UI overhaul and feature enhancements

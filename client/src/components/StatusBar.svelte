@@ -75,8 +75,8 @@
     </div>
     
     <!-- Engine Status -->
-    <div class="status-indicator {engineReady ? 'status-connected' : engineStatus === 'iframe-disabled' ? 'status-disabled' : 'status-analyzing'}" 
-         title="{engineStatus === 'iframe-disabled' ? 'AI disabled in iframe mode' : 'Chess Engine'}">
+    <div class="status-indicator {engineReady ? 'status-connected' : 'status-analyzing'}" 
+         title="Chess Engine">
       <Cpu size="14" />
     </div>
     

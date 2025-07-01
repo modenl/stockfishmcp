@@ -45,9 +45,6 @@ class Stockfish {
       // Loading Stockfish NNUE module
       engineStatus.set('loading');
       
-      // Check if we're in an iframe
-      const isInIframe = window.self !== window.top;
-      // Check if running in iframe
       const hasSharedArrayBuffer = typeof SharedArrayBuffer !== 'undefined';
       
       // Load the Stockfish module using script tag approach for Vite
@@ -59,14 +56,13 @@ class Stockfish {
       engineStatus.set('initializing');
       
       // Create engine with simplified options
-      // If in iframe without SharedArrayBuffer, this might fail
       try {
         this.engine = await window.Stockfish();
       } catch (engineError) {
         console.error('❌ Failed to create Stockfish engine:', engineError);
         // If SharedArrayBuffer is not available, we can't use the WASM version
-        if (!hasSharedArrayBuffer && isInIframe) {
-          throw new Error('Stockfish requires SharedArrayBuffer which is not available in cross-origin iframes. AI play is disabled.');
+        if (!hasSharedArrayBuffer) {
+          throw new Error('Stockfish requires SharedArrayBuffer which is not available. AI play is disabled.');
         }
         throw engineError;
       }
@@ -92,12 +88,7 @@ class Stockfish {
       this.isReady = false;
       engineReady.set(false);
       
-      // Set appropriate status based on error
-      if (error.message && error.message.includes('cross-origin iframes')) {
-        engineStatus.set('iframe-disabled');
-      } else {
-        engineStatus.set('error');
-      }
+      engineStatus.set('error');
     }
   }
 

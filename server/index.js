@@ -58,58 +58,30 @@ class ChessTrainerServer {
   }
 
   async setupMiddleware() {
-    // Special handling for embed routes BEFORE helmet
-    this.app.use('/embed', (req, res, next) => {
-      // Override any restrictive headers for embed route
-      res.setHeader('X-Frame-Options', 'ALLOWALL');
-      res.setHeader('Content-Security-Policy', 
-        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
-        "script-src * 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; " +
-        "worker-src * blob:; " +
-        "connect-src * ws: wss: http: https:; " +
-        "frame-ancestors http: https: file: *;"
-      );
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      // Add headers needed for SharedArrayBuffer in iframes
-      res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
-      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-      next();
-    });
-
     // Add headers to enable SharedArrayBuffer for Stockfish WASM
     this.app.use((req, res, next) => {
-      // For non-embed routes
-      if (!req.path.startsWith('/embed')) {
-        res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-        res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      }
+      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+      res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       next();
     });
 
-    // Apply helmet only to non-embed routes
-    this.app.use((req, res, next) => {
-      if (req.path.startsWith('/embed')) {
-        // Skip helmet for embed routes
-        next();
-      } else {
-        helmet({
-          contentSecurityPolicy: {
-            directives: {
-              defaultSrc: ["'self'"],
-              scriptSrc: ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
-              workerSrc: ["'self'", "blob:"],
-              styleSrc: ["'self'", "'unsafe-inline'"],
-              imgSrc: ["'self'", "data:", "blob:"],
-              connectSrc: ["'self'", "ws:", "wss:"]
-            }
-          },
-          crossOriginOpenerPolicy: false,
-          crossOriginEmbedderPolicy: false,
-          frameguard: false
-        })(req, res, next);
-      }
-    });
+    // Apply helmet
+    this.app.use(helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
+          workerSrc: ["'self'", "blob:"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
+          imgSrc: ["'self'", "data:", "blob:"],
+          connectSrc: ["'self'", "ws:", "wss:"]
+        }
+      },
+      crossOriginOpenerPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      frameguard: false
+    }));
     
     this.app.use(cors({
       origin: true, // Allow all origins
@@ -131,11 +103,10 @@ class ChessTrainerServer {
         changeOrigin: true,
         ws: false, // Don't proxy websockets (we handle those)
         pathFilter: (pathname, req) => {
-          // Don't proxy API routes, WebSocket routes, embed routes, or our specific endpoints
+          // Don't proxy API routes, WebSocket routes, or our specific endpoints
           return !pathname.startsWith('/api') && 
                  !pathname.startsWith('/ws') && 
-                 !pathname.startsWith('/socket.io') &&
-                 !pathname.startsWith('/embed');
+                 !pathname.startsWith('/socket.io');
         },
         onProxyReq: (proxyReq, req, res) => {
           // Add required headers for SharedArrayBuffer support
@@ -161,17 +132,6 @@ class ChessTrainerServer {
             res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
           }
           
-          // Special handling for HTML files when accessed via /embed
-          if (filepath.endsWith('index.html')) {
-            res.setHeader('X-Frame-Options', 'ALLOWALL');
-            res.setHeader('Content-Security-Policy', 
-              "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
-              "script-src * 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; " +
-              "worker-src * blob:; " +
-              "connect-src * ws: wss: http: https:; " +
-              "frame-ancestors http: https: file: *;"
-            );
-          }
           
           // Special handling for WASM files
           if (filepath.endsWith('.wasm')) {
@@ -620,22 +580,6 @@ class ChessTrainerServer {
       }
     });
 
-    // Embed route: serve main index.html so UI is identical
-    this.app.get('/embed', (req, res) => {
-      // Set headers explicitly for embed route
-      res.setHeader('X-Frame-Options', 'ALLOWALL');
-      res.setHeader('Content-Security-Policy', 
-        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; " +
-        "script-src * 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; " +
-        "worker-src * blob:; " +
-        "connect-src * ws: wss: http: https:; " +
-        "frame-ancestors http: https: file: *;"
-      );
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-      
-      res.sendFile(path.join(__dirname, '../client/dist/index.html'));
-    });
-
     // Serve Svelte app for all other routes  
     this.app.get('*', (req, res) => {
       res.sendFile(path.join(__dirname, '../client/dist/index.html'));
@@ -973,26 +917,44 @@ class ChessTrainerServer {
   }
 
   async handleResetGame(ws, message) {
-    console.log(`🔄 Resetting game`);
+    const { gameSettings } = message;
     
-    // Reset game state to starting position
-    const gameState = gameStateManager.resetGame();
+    console.log('🔄 SERVER: Resetting game with settings:', gameSettings);
     
-    console.log(`✅ Game reset. State reset to starting position.`);
+    // Reset game state with provided settings
+    const gameState = {
+      active: true,
+      startTime: new Date().toISOString(),
+      mode: 'play',
+      moves: [],
+      fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+      turn: 'white',
+      lastUpdated: new Date().toISOString(),
+      // Use client-provided settings or fallback to defaults
+      gameMode: gameSettings?.mode || 'human_vs_human',
+      playerColor: gameSettings?.playerColor || 'white',
+      aiEloRating: gameSettings?.aiEloRating || 1500,
+      aiTimeLimit: gameSettings?.aiTimeLimit || 500
+    };
+
+    gameStateManager.saveGameState(gameState);
     
-    // Send confirmation back to client
-    ws.send(JSON.stringify({
-      type: 'game_reset',
+    console.log('✅ SERVER: Game reset with new settings');
+    
+    // Broadcast reset to all clients (including the sender)
+    const resetMessage = {
+      type: 'mcp_game_reset',
       fen: gameState.fen,
-      turn: gameState.turn
-    }));
+      turn: gameState.turn,
+      gameSettings: {
+        mode: gameState.gameMode,
+        playerColor: gameState.playerColor,
+        aiEloRating: gameState.aiEloRating,
+        aiTimeLimit: gameState.aiTimeLimit
+      }
+    };
     
-    // Broadcast reset to all other clients
-    this.broadcastToAll({
-      type: 'game_reset',
-      fen: gameState.fen,
-      turn: gameState.turn
-    }, ws);
+    this.broadcastToAll(resetMessage);
   }
 
   async handleInboundMCP(message) {

@@ -15,20 +15,14 @@ export class MCPServer {
     this.server = new Server(
       {
         name: 'chess-trainer-mcp',
-        version: '1.0.11',
+        version: '1.0.13',
       },
       {
         capabilities: {
           tools: {},
           resources: {},
           prompts: {},
-          experimental: {
-            embedding: {
-              supported: true,
-              version: '1.0.0',
-              features: ['iframe', 'postMessage']
-            }
-          }
+          experimental: {}
         },
       }
     );
@@ -170,19 +164,15 @@ export class MCPServer {
             opening_name: z.string().optional().describe('Name of the opening (if known)')
           })
         )
-      },
-
+},
+      
       // Embedding Tools
       {
         name: 'get_embeddable_url',
-        description: 'Get an embeddable URL for iframe integration of the current active game',
+        description: 'Get a URL to access the chess trainer web interface',
         inputSchema: zodToJsonSchema(
           z.object({
-            mode: z.enum(['full', 'board-only', 'minimal']).default('minimal').describe('UI mode for embedded view'),
-            width: z.number().min(300).max(1200).default(600).describe('Width of the embedded view'),
-            height: z.number().min(300).max(1200).default(600).describe('Height of the embedded view'),
-            allow_moves: z.boolean().default(true).describe('Allow making moves in embedded view'),
-            show_controls: z.boolean().default(false).describe('Show game controls in embedded view')
+            port: z.number().min(1024).max(65535).default(3456).describe('Port where the chess trainer is running')
           })
         )
       },
@@ -223,7 +213,7 @@ export class MCPServer {
           capabilities: this.server.getCapabilities(),
           serverInfo: {
             name: 'chess-trainer-mcp',
-            version: '1.0.11'
+            version: '1.0.13'
           },
           instructions: 'Chess Trainer MCP Server is ready. The chess server has been automatically started on port 3456.'
         };
@@ -344,7 +334,7 @@ export class MCPServer {
         return await this.generatePgn(arguments_);
       case 'explain_opening':
         return await this.explainOpening(arguments_.moves, arguments_.opening_name);
-
+      
       // Embedding Tools
       case 'get_embeddable_url':
         return await this.getEmbeddableUrl(arguments_);
@@ -826,32 +816,9 @@ export class MCPServer {
 
   async getEmbeddableUrl(args) {
     try {
-      const {
-        mode = 'minimal',
-        width = 600,
-        height = 600,
-        allow_moves = true,
-        show_controls = false
-      } = args;
-
-      // Ensure game exists
-      const gameState = this.gameStateManager.getGameState();
-      if (!gameState) {
-        console.error('🎯 No game state found, setting up default game...');
-        
-        // Setup a default game
-        await this.setupGame({
-          mode: 'human_vs_ai',
-          player_color: 'white',
-          ai_elo: 1500,
-          ai_time_limit: 1000
-        });
-        
-        console.error(`✅ Default game setup completed`);
-      }
-
+      const { port = 3456 } = args;
+      
       // Check if server is running
-      const port = 3456; // Default port, could be made configurable
       try {
         const response = await fetch(`http://localhost:${port}/api/health`);
         if (!response.ok) {
@@ -861,72 +828,27 @@ export class MCPServer {
         return {
           content: [{
             type: 'text',
-            text: `❌ Chess Trainer server is not running\n\n` +
+            text: `❌ Chess Trainer server is not running on port ${port}\n\n` +
                   `Please start the server first using 'launch_chess_trainer'`
           }]
         };
       }
 
-      // Generate URL based on mode
-      let url;
-      if (mode === 'full') {
-        // For full mode, return the normal web page URL
-        url = `http://localhost:${port}/`;
-      } else {
-        // For other modes, return embed URL with parameters
-        const params = new URLSearchParams({
-          mode,
-          width: width.toString(),
-          height: height.toString(),
-          allow_moves: allow_moves.toString(),
-          show_controls: show_controls.toString()
-        });
-        url = `http://localhost:${port}/embed?${params.toString()}`;
-      }
+      // Get the current game state to include in the URL if needed
+      const gameState = this.gameStateManager.getGameState();
+      const hasActiveGame = gameState && gameState.active;
       
-      const embedUrl = url;
+      // Generate the URL
+      const url = `http://localhost:${port}/`;
       
-      // Generate iframe code
-      const iframeCode = `<iframe 
-  src="${embedUrl}"
-  width="${width}"
-  height="${height}"
-  frameborder="0"
-  allow="fullscreen"
-  style="border: 1px solid #ccc; border-radius: 8px;"
-></iframe>`;
-
-      // 检查是否是在本次调用中自动创建的游戏
-      const gameStatusMessage = `🎯 Using current active chess game.`;
-
       return {
         content: [{
           type: 'text',
-          text: `🎮 Embeddable Chess Board URL\n\n` +
-                `🖼️ Mode: ${mode}\n` +
-                `📐 Size: ${width}x${height}\n` +
-                `🎯 Interactive: ${allow_moves ? 'Yes' : 'View Only'}\n` +
-                `🎛️ Controls: ${show_controls ? 'Visible' : 'Hidden'}\n\n` +
-                `🔗 Embed URL:\n${embedUrl}\n\n` +
-                `📋 IFrame Code:\n\`\`\`html\n${iframeCode}\n\`\`\`\n\n` +
-                `💡 This URL can be embedded in any web application that supports iframes.\n` +
-                `${gameStatusMessage}`
-        }],
-        // Include structured data for programmatic access
-        data: {
-          url: embedUrl,
-          iframe_code: iframeCode,
-          parameters: {
-            mode,
-            width,
-            height,
-            allow_moves,
-            show_controls
-          }
-        }
+          text: url
+        }]
       };
     } catch (error) {
-      throw new Error(`Failed to generate embeddable URL: ${error.message}`);
+      throw new Error(`Failed to generate URL: ${error.message}`);
     }
   }
   

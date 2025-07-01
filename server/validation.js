@@ -8,11 +8,10 @@ const messageSchemas = {
     type: 'object',
     properties: {
       type: { type: 'string', const: 'join_session' },
-      sessionId: { type: 'string', minLength: 1, maxLength: 50 },
       clientId: { type: 'string', minLength: 1, maxLength: 100 },
       clientName: { type: 'string', minLength: 1, maxLength: 50 }
     },
-    required: ['type', 'sessionId', 'clientId', 'clientName'],
+    required: ['type', 'clientId', 'clientName'],
     additionalProperties: false
   },
 
@@ -56,7 +55,6 @@ const messageSchemas = {
     type: 'object',
     properties: {
       type: { type: 'string', const: 'end_session' },
-      sessionId: { type: 'string', minLength: 1, maxLength: 50 },
       result: {
         type: 'object',
         properties: {
@@ -67,7 +65,7 @@ const messageSchemas = {
         additionalProperties: false
       }
     },
-    required: ['type', 'sessionId', 'result'],
+    required: ['type', 'result'],
     additionalProperties: false
   },
 
@@ -89,7 +87,6 @@ const messageSchemas = {
     type: 'object',
     properties: {
       type: { type: 'string', const: 'sync_move' },
-      sessionId: { type: 'string', minLength: 1, maxLength: 50 },
       clientId: { type: 'string', minLength: 1, maxLength: 100 },
       clientName: { type: 'string', minLength: 1, maxLength: 50 },
       move: {
@@ -104,7 +101,7 @@ const messageSchemas = {
       fen: { type: 'string', minLength: 10, maxLength: 100 },
       turn: { type: 'string', enum: ['white', 'black'] }
     },
-    required: ['type', 'sessionId', 'clientId', 'clientName', 'move', 'fen', 'turn'],
+    required: ['type', 'clientId', 'clientName', 'move', 'fen', 'turn'],
     additionalProperties: false
   },
 
@@ -112,9 +109,20 @@ const messageSchemas = {
     type: 'object',
     properties: {
       type: { type: 'string', const: 'reset_game' },
-      sessionId: { type: 'string', minLength: 1, maxLength: 50 }
+      clientId: { type: 'string', minLength: 1, maxLength: 100 },
+      clientName: { type: 'string', minLength: 1, maxLength: 50 },
+      gameSettings: {
+        type: 'object',
+        properties: {
+          mode: { type: 'string', enum: ['human_vs_human', 'human_vs_ai'] },
+          playerColor: { type: 'string', enum: ['white', 'black'] },
+          aiEloRating: { type: 'number', minimum: 800, maximum: 3200 },
+          aiTimeLimit: { type: 'number', minimum: 100, maximum: 30000 }
+        },
+        additionalProperties: false
+      }
     },
-    required: ['type', 'sessionId'],
+    required: ['type'],
     additionalProperties: false
   }
 };

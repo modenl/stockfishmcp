@@ -20,7 +20,7 @@
     startPos = orientation === 'vertical' ? e.clientX : e.clientY;
     startSize = defaultPosition;
     
-    // Create overlay to prevent iframe/webview interference
+    // Create overlay to prevent interference during dragging
     dragOverlay = document.createElement('div');
     dragOverlay.style.cssText = `
       position: fixed;
@@ -185,8 +185,7 @@
     background: var(--accent-primary, #4f9eff) !important;
   }
   
-  /* Disable pointer events on iframes during drag */
-  :global(.dragging-splitter) iframe,
+  /* Disable pointer events on webviews during drag */
   :global(.dragging-splitter) webview {
     pointer-events: none !important;
   }
