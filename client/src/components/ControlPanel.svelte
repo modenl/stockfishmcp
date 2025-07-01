@@ -392,7 +392,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--spacing-xs) 0;
+    padding: var(--spacing-xs) var(--spacing-sm);
     border-bottom: 1px solid var(--border);
   }
 
