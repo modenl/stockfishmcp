@@ -132,3 +132,4 @@ pids
 # Temporary folders
 tmp/
 temp/
+.state/game_state.json
