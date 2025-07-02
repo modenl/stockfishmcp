@@ -728,7 +728,15 @@ Get explanation and principles of a chess opening.
 
 ## 📝 Changelog
 
-### Version 1.0.11 (Latest)
+### Version 1.1.0 (Latest)
+- **Upgraded to Svelte 5**: Complete migration of the chess trainer client from Svelte 4 to Svelte 5
+- **Modern Component Syntax**: Converted all components to use new Svelte 5 runes ($state, $props, $effect, $derived)
+- **Improved Event Handling**: Migrated from createEventDispatcher to prop-based event system
+- **Better Performance**: Leveraging Svelte 5's improved reactivity system and compiler optimizations
+- **Fixed Turn Tracking**: Resolved issue where turns weren't updating correctly after moves
+- **Enhanced Type Safety**: Better TypeScript support with Svelte 5's improved type inference
+
+### Version 1.0.11
 - **Reorganized MCP Tools**: Streamlined from 16 to 15 tools with better categorization
 - **Improved Tool Names**: Clearer, more descriptive tool names (e.g., `suggest_move` → `suggest_best_move`)
 - **Enhanced Server Startup**: Better error handling and retry logic for `launch_chess_trainer`

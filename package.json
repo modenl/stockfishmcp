@@ -1,6 +1,6 @@
 {
   "name": "chess-trainer-mcp",
-  "version": "1.0.14",
+  "version": "1.1.0",
   "description": "Chess Trainer MCP Server with Stockfish NNUE engine - Interactive chess training with AI coaching capabilities",
   "main": "server/index.js",
   "type": "module",
