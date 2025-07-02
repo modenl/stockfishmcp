@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { Chess } from 'chessops/chess';
   import { parseFen, makeFen } from 'chessops/fen';
   import { parseUci } from 'chessops/util';
@@ -7,27 +7,29 @@
   import { chessgroundDests } from 'chessops/compat';
   import { languageStore } from '../stores/language.js';
 
-  export let gameData = null;
-  export let onClose = () => {};
+  let {
+    gameData = null,
+    onClose = () => {}
+  } = $props();
 
-  let chess;
-  let currentMoveIndex = -1;
-  let moves = [];
-  let positions = [];
-  let isPlaying = false;
-  let playInterval = null;
-  let playSpeed = gameData?.delayMs || 1000;
-  let chessground;
-  let boardElement;
+  let chess = $state();
+  let currentMoveIndex = $state(-1);
+  let moves = $state([]);
+  let positions = $state([]);
+  let isPlaying = $state(false);
+  let playInterval = $state(null);
+  let playSpeed = $state(gameData?.delayMs || 1000);
+  let chessground = $state();
+  let boardElement = $state();
   
-  let showLastMove = true;
-  let showCheck = true;
-  let showMoveAnimation = true;
-  let showShapes = true;
-  let boardOrientation = 'white';
+  let showLastMove = $state(true);
+  let showCheck = $state(true);
+  let showMoveAnimation = $state(true);
+  let showShapes = $state(true);
+  let boardOrientation = $state('white');
 
-  $: currentLang = $languageStore;
-  $: t = languageStore.translations[currentLang];
+  let currentLang = $derived($languageStore);
+  let t = $derived(languageStore.translations[currentLang]);
 
   onMount(async () => {
     const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -104,16 +106,19 @@
     } catch (error) {
       console.error('Failed to load Chessground:', error);
     }
+
+    // Cleanup
+    return () => {
+      if (playInterval) {
+        clearInterval(playInterval);
+      }
+      if (chessground) {
+        chessground.destroy();
+      }
+    };
   });
 
-  onDestroy(() => {
-    if (playInterval) {
-      clearInterval(playInterval);
-    }
-    if (chessground) {
-      chessground.destroy();
-    }
-  });
+  // Cleanup will be handled in onMount return
 
   function goToMove(moveIndex) {
     if (moveIndex < -1 || moveIndex >= moves.length) {
@@ -360,23 +365,23 @@
     <h3>{t?.gameReplay || 'Game Replay'}</h3>
     <div class="header-controls">
       <div class="visual-controls">
-        <button class="control-btn small" on:click={flipBoard} title="翻转棋盘 / Flip Board">
+        <button class="control-btn small" onclick={flipBoard} title="翻转棋盘 / Flip Board">
           🔄
         </button>
-        <button class="control-btn small" class:active={showShapes} on:click={toggleShapes} title="显示/隐藏箭头 / Show/Hide Arrows">
+        <button class="control-btn small" class:active={showShapes} onclick={toggleShapes} title="显示/隐藏箭头 / Show/Hide Arrows">
           🎯
         </button>
-        <button class="control-btn small" class:active={showMoveAnimation} on:click={toggleAnimation} title="开启/关闭动画 / Toggle Animation">
+        <button class="control-btn small" class:active={showMoveAnimation} onclick={toggleAnimation} title="开启/关闭动画 / Toggle Animation">
           ✨
         </button>
-        <button class="control-btn small" class:active={showLastMove} on:click={toggleLastMove} title="显示/隐藏最后一步 / Show/Hide Last Move">
+        <button class="control-btn small" class:active={showLastMove} onclick={toggleLastMove} title="显示/隐藏最后一步 / Show/Hide Last Move">
           📍
         </button>
-        <button class="control-btn small" class:active={showCheck} on:click={toggleCheck} title="显示/隐藏将军 / Show/Hide Check">
+        <button class="control-btn small" class:active={showCheck} onclick={toggleCheck} title="显示/隐藏将军 / Show/Hide Check">
           👑
         </button>
       </div>
-      <button class="close-btn" on:click={onClose}>
+      <button class="close-btn" onclick={onClose}>
         ✕
       </button>
     </div>
@@ -389,26 +394,26 @@
       </div>
       
       <div class="playback-controls">
-        <button class="control-btn" on:click={goToStart} disabled={currentMoveIndex === -1}>
+        <button class="control-btn" onclick={goToStart} disabled={currentMoveIndex === -1}>
           ⏮
         </button>
-        <button class="control-btn" on:click={goToPrevious} disabled={currentMoveIndex === -1}>
+        <button class="control-btn" onclick={goToPrevious} disabled={currentMoveIndex === -1}>
           ⏪
         </button>
-        <button class="control-btn play-btn" on:click={toggleAutoPlay}>
+        <button class="control-btn play-btn" onclick={toggleAutoPlay}>
           {isPlaying ? '⏸' : '▶'}
         </button>
-        <button class="control-btn" on:click={goToNext} disabled={currentMoveIndex >= moves.length - 1}>
+        <button class="control-btn" onclick={goToNext} disabled={currentMoveIndex >= moves.length - 1}>
           ⏩
         </button>
-        <button class="control-btn" on:click={goToEnd} disabled={currentMoveIndex >= moves.length - 1}>
+        <button class="control-btn" onclick={goToEnd} disabled={currentMoveIndex >= moves.length - 1}>
           ⏭
         </button>
       </div>
 
       <div class="speed-controls">
         <label for="speed-select">{t?.playSpeed || 'Speed'}:</label>
-        <select id="speed-select" bind:value={playSpeed} on:change={() => setPlaySpeed(playSpeed)}>
+        <select id="speed-select" bind:value={playSpeed} onchange={() => setPlaySpeed(playSpeed)}>
           <option value={2000}>0.5x</option>
           <option value={1000}>1x</option>
           <option value={500}>2x</option>
@@ -440,7 +445,7 @@
       <div class="moves-list">
         <div class="move-item starting-position" 
              class:active={currentMoveIndex === -1}
-             on:click={() => goToMove(-1)}>
+             onclick={() => goToMove(-1)}>
           <span class="move-number">0.</span>
           <span class="move-notation">{t?.startingPosition || 'Starting Position'}</span>
         </div>
@@ -450,7 +455,7 @@
                class:active={currentMoveIndex === index}
                class:white={index % 2 === 0}
                class:black={index % 2 === 1}
-               on:click={() => goToMove(index)}>
+               onclick={() => goToMove(index)}>
             <span class="move-number">
               {#if index % 2 === 0}
                 {Math.floor(index / 2) + 1}.

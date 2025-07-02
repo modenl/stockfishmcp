@@ -1,32 +1,34 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { Chess } from 'chessops/chess';
   import { parseFen, makeFen } from 'chessops/fen';
   import { parseUci, parseSquare } from 'chessops/util';
   import { makeSan } from 'chessops/san';
   import { chessgroundDests } from 'chessops/compat';
 
-  export let fen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-  export let turn = 'white';
-  export let highlightedSquares = [];
-  export let disabled = false;
-  export let gameMode = 'human_vs_human';
-  export let playerColor = 'white';
-  export let aiThinking = false;
-  export let gameStatus = 'playing';
-  export let replayMode = false;
-  export let boardWidth = 512;
-  export let boardHeight = 512;
-  
-  import { createEventDispatcher } from 'svelte';
-  const dispatch = createEventDispatcher();
+  let {
+    fen = $bindable('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'),
+    turn = 'white',
+    highlightedSquares = [],
+    disabled = false,
+    gameMode = 'human_vs_human',
+    playerColor = 'white',
+    aiThinking = false,
+    gameStatus = 'playing',
+    replayMode = false,
+    boardWidth = 512,
+    boardHeight = 512,
+    onmove = () => {} // Event handler prop for Svelte 5
+  } = $props();
 
-  let boardElement;
-  let chessground;
-  let chess;
+  let boardElement = $state();
+  let chessground = $state();
+  let chess = $state();
 
   function getMovableColor() {
-    if (disabled || aiThinking || gameStatus !== 'playing' || replayMode) return undefined;
+    if (disabled || aiThinking || gameStatus !== 'playing' || replayMode) {
+      return undefined;
+    }
     
     if (gameMode === 'human_vs_human') {
       return turn === 'white' ? 'white' : 'black';
@@ -78,11 +80,58 @@
       console.error('Failed to load Chessground:', error);
       showTextBoard();
     }
+
+    // Cleanup
+    return () => {
+      if (chessground) {
+        chessground.destroy();
+      }
+    };
   });
 
-  onDestroy(() => {
-    if (chessground) {
-      chessground.destroy();
+  // Cleanup is now handled in onMount return
+  // onDestroy is removed in Svelte 5
+  
+  // Track previous FEN to avoid unnecessary updates
+  let previousFen = $state('');
+  
+  // Set up reactive updates - must be at component level
+  $effect(() => {
+    if (chessground && fen && fen !== previousFen) {
+      try {
+        // Update chess position from FEN if it changed
+        const setup = parseFen(fen).unwrap();
+        chess = Chess.fromSetup(setup).unwrap();
+        
+        const movableColor = getMovableColor();
+        
+        // Update the board with new position and movable state
+        chessground.set({
+          fen: fen,
+          turnColor: turn === 'white' ? 'white' : 'black',  // Use the turn prop, not setup.turn
+          movable: {
+            color: movableColor,
+            dests: chessgroundDests(chess)
+          },
+          lastMove: highlightedSquares.length >= 2 ? [highlightedSquares[0], highlightedSquares[1]] : undefined
+        });
+        
+        // Update previous FEN to avoid re-running
+        previousFen = fen;
+      } catch (error) {
+        console.error('Error updating board:', error);
+      }
+    } else if (chessground && fen === previousFen) {
+      // FEN hasn't changed, but other props might have (turn, gameMode, etc)
+      const movableColor = getMovableColor();
+      if (chessground.state.movable.color !== movableColor) {
+        chessground.set({
+          movable: {
+            color: movableColor,
+            dests: chess ? chessgroundDests(chess) : new Map()
+          }
+        });
+      }
     }
   });
 
@@ -133,7 +182,7 @@
         };
         
         // Legal move made
-        dispatch('move', moveObj);
+        onmove(moveObj);
       } else {
         // Illegal move attempted
         // Reset the board position
@@ -196,30 +245,7 @@
     `;
   }
 
-  // Reactive updates - combined to avoid conflicts
-  // React to: fen, turn, aiThinking, disabled, gameStatus, playerColor changes
-  $: if (chessground) {
-    console.log('🎯 ChessBoard: Updating board with new FEN:', fen);
-    try {
-      // Update chess position from FEN if it changed
-      const setup = parseFen(fen).unwrap();
-      chess = Chess.fromSetup(setup).unwrap();
-      
-      // Update the board with new position and movable state
-      chessground.set({
-        fen: fen,
-        turnColor: setup.turn === 'white' ? 'white' : 'black',
-        movable: {
-          color: getMovableColor(),
-          dests: chessgroundDests(chess)
-        },
-        lastMove: highlightedSquares.length >= 2 ? [highlightedSquares[0], highlightedSquares[1]] : undefined
-      });
-      console.log('🎯 ChessBoard: Board updated successfully');
-    } catch (error) {
-      console.error('Error updating board:', error);
-    }
-  }
+  // Reactive updates are now handled inside onMount
   
   
 </script>

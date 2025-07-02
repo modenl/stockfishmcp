@@ -2,26 +2,28 @@
   import { languageStore } from '../stores/language.js';
   import { themeStore, toggleTheme } from '../stores/theme.js';
   
-  export let gameState;
-  export let analysisResult = null;
-  export let isAnalyzing = false;
-  export let onNewGame = () => {};
-  export let onEndGame = () => {};
-  export let onRequestAnalysis = () => {};
-  export let onLoadCurrentGame = () => {};
-  export let onLoadSampleGame = () => {};
-  export let onFileUpload = () => {};
-  export let onResetAI = () => {};
-  export let onShowNewGameModal = () => {};
+  let {
+    gameState,
+    analysisResult = null,
+    isAnalyzing = false,
+    onNewGame = () => {},
+    onEndGame = () => {},
+    onRequestAnalysis = () => {},
+    onLoadCurrentGame = () => {},
+    onLoadSampleGame = () => {},
+    onFileUpload = () => {},
+    onResetAI = () => {},
+    onShowNewGameModal = () => {}
+  } = $props();
 
 
-  let showLanguageSettings = false;
-  let showReplayMenu = false;
-  let fileInput;
+  let showLanguageSettings = $state(false);
+  let showReplayMenu = $state(false);
+  let fileInput = $state();
   
-  $: currentLang = $languageStore;
-  $: t = languageStore.translations[currentLang];
-  $: currentTheme = $themeStore;
+  let currentLang = $derived($languageStore);
+  let t = $derived(languageStore.translations[currentLang]);
+  let currentTheme = $derived($themeStore);
 
   function handleNewGameClick() {
     onShowNewGameModal();
@@ -71,10 +73,10 @@
   <div class="panel-header">
     <h3>{t.gameInfo}</h3>
     <div class="header-buttons">
-      <button class="theme-btn" on:click={toggleTheme} title={currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
+      <button class="theme-btn" onclick={toggleTheme} title={currentTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
         {currentTheme === 'dark' ? '☀️' : '🌙'}
       </button>
-      <button class="language-btn" on:click={toggleLanguageSettings} title={t.language}>
+      <button class="language-btn" onclick={toggleLanguageSettings} title={t.language}>
         🌐
       </button>
     </div>
@@ -85,13 +87,13 @@
       <div class="language-options">
         <button 
           class="lang-option {currentLang === 'zh' ? 'active' : ''}"
-          on:click={() => languageStore.setLanguage('zh')}
+          onclick={() => languageStore.setLanguage('zh')}
         >
           {t.chinese}
         </button>
         <button 
           class="lang-option {currentLang === 'en' ? 'active' : ''}"
-          on:click={() => languageStore.setLanguage('en')}
+          onclick={() => languageStore.setLanguage('en')}
         >
           {t.english}
         </button>
@@ -149,7 +151,7 @@
   <div class="controls">
     <button 
       class="btn btn-primary" 
-      on:click={handleNewGameClick}
+      onclick={handleNewGameClick}
     >
       {t.newGame}
     </button>
@@ -157,7 +159,7 @@
     {#if gameState.status === 'playing' || (gameState.status !== 'checkmate' && gameState.status !== 'stalemate' && gameState.status !== 'draw' && gameState.status !== 'ended' && gameState.status !== 'resigned')}
       <button 
         class="btn btn-secondary resign-button" 
-        on:click={() => {
+        onclick={() => {
           console.log('🔴 Resign button clicked');
           console.log('🔴 onEndGame prop type:', typeof onEndGame);
           console.log('🔴 onEndGame prop value:', onEndGame);
@@ -192,7 +194,7 @@
     
     <button 
       class="btn btn-secondary" 
-      on:click={onRequestAnalysis}
+      onclick={onRequestAnalysis}
       disabled={isAnalyzing}
     >
       {isAnalyzing ? (t.analyzing || 'Analyzing...') : t.analyzePosition}
@@ -201,7 +203,7 @@
     {#if gameState.mode === 'human_vs_ai' && gameState.aiThinking}
       <button 
         class="btn btn-warning" 
-        on:click={onResetAI}
+        onclick={onResetAI}
         title="AI思考时间过长时使用"
       >
         🔄 重置AI
@@ -232,7 +234,7 @@
     
     <button 
       class="btn btn-secondary" 
-      on:click={toggleReplayMenu}
+      onclick={toggleReplayMenu}
     >
       {t.gameReplay || 'Game Replay'} 📺
     </button>
@@ -241,7 +243,7 @@
       <div class="replay-menu">
         <button 
           class="replay-btn" 
-          on:click={onLoadCurrentGame}
+          onclick={onLoadCurrentGame}
           disabled={gameState.moves.length === 0}
         >
           {t.replayCurrentGame || 'Replay Current Game'}
@@ -249,18 +251,18 @@
         
         <div class="sample-games">
           <p class="menu-label">{t.sampleGames || 'Sample Games'}:</p>
-          <button class="replay-btn" on:click={() => onLoadSampleGame('scholarsMate')}>
+          <button class="replay-btn" onclick={() => onLoadSampleGame('scholarsMate')}>
             {t.scholarsMate || "Scholar's Mate"}
           </button>
-          <button class="replay-btn" on:click={() => onLoadSampleGame('italianGame')}>
+          <button class="replay-btn" onclick={() => onLoadSampleGame('italianGame')}>
             {t.italianGame || 'Italian Game'}
           </button>
-          <button class="replay-btn" on:click={() => onLoadSampleGame('sicilianDefense')}>
+          <button class="replay-btn" onclick={() => onLoadSampleGame('sicilianDefense')}>
             {t.sicilianDefense || 'Sicilian Defense'}
           </button>
         </div>
         
-        <button class="replay-btn file-upload-btn" on:click={handleFileUpload}>
+        <button class="replay-btn file-upload-btn" onclick={handleFileUpload}>
           {t.loadPgnFile || 'Load PGN File'} 📁
         </button>
         
@@ -268,7 +270,7 @@
           bind:this={fileInput}
           type="file" 
           accept=".pgn,.txt" 
-          on:change={onFileUpload}
+          onchange={onFileUpload}
           style="display: none;"
         />
       </div>

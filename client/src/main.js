@@ -1,3 +1,4 @@
+import { mount } from 'svelte';
 import App from './App.svelte'
 import './index.css'
 
@@ -6,7 +7,7 @@ let app = null;
 try {
   // Starting Chess Trainer app
   
-  app = new App({
+  app = mount(App, {
     target: document.getElementById('root')
   });
   

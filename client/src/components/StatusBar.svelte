@@ -2,20 +2,22 @@
   import { Wifi, WifiOff, Cpu, Clock, ShieldCheck, AlertTriangle, MessageCircle, Hourglass, Users } from 'lucide-svelte';
   import { languageStore } from '../stores/language.js';
 
-  export let connectionStatus = 'disconnected';
-  export let engineReady = false;
-  export let engineStatus = 'loading';
-  export let session = null;
-  export let gameStatus = 'playing';
-  export let turn = 'white';
-  export let aiThinking = false;
-  export let inCheck = false;
-  export let clientName = 'Player';
-  export let connectedClients = [];
-  export let clientId = '...';
+  let {
+    connectionStatus = 'disconnected',
+    engineReady = false,
+    engineStatus = 'loading',
+    session = null,
+    gameStatus = 'playing',
+    turn = 'white',
+    aiThinking = false,
+    inCheck = false,
+    clientName = 'Player',
+    connectedClients = [],
+    clientId = '...'
+  } = $props();
   
-  $: currentLang = $languageStore;
-  $: t = languageStore.translations[currentLang];
+  let currentLang = $derived($languageStore);
+  let t = $derived(languageStore.translations[currentLang]);
 
   const statusIcons = {
     connected: Wifi,
@@ -70,9 +72,19 @@
 <div class="status-bar-compact">
   <div class="status-indicators">
     <!-- Connection Status -->
-    <div class="status-indicator {getConnectionClass(connectionStatus)}" title="WebSocket Connection">
-      <svelte:component this={getConnectionIcon(connectionStatus)} size="14" />
-    </div>
+    {#if connectionStatus === 'connected'}
+      <div class="status-indicator status-connected" title="WebSocket Connection">
+        <Wifi size={14} />
+      </div>
+    {:else if connectionStatus === 'disconnected' || connectionStatus === 'error' || connectionStatus === 'failed'}
+      <div class="status-indicator status-disconnected" title="WebSocket Connection">
+        <WifiOff size={14} />
+      </div>
+    {:else}
+      <div class="status-indicator status-analyzing" title="WebSocket Connection">
+        <Wifi size={14} />
+      </div>
+    {/if}
     
     <!-- Engine Status -->
     <div class="status-indicator {engineReady ? 'status-connected' : 'status-analyzing'}" 

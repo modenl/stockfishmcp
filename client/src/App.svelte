@@ -1,5 +1,5 @@
 <script>
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import ChessBoard from './components/ChessBoard.svelte';
   import ControlPanel from './components/ControlPanel.svelte';
@@ -15,66 +15,42 @@
   import { makeSan, parseSan } from 'chessops/san';
   import './App.css';
 
-  // Board size configuration - make it responsive
-  let boardWidth = 512;
-  let boardHeight = 512;
+  // Board size configuration - make it responsive (removed - using computed values instead)
   
-  // Update board size based on window size for responsive layout
-  $: if (windowWidth < 768) {
-    // Mobile: smaller board
-    boardWidth = Math.min(windowWidth - 32, 400);
-    boardHeight = boardWidth;
-  } else if (windowWidth < 1024) {
-    // Tablet: medium board
-    boardWidth = Math.min(windowWidth * 0.6, 500);
-    boardHeight = boardWidth;
-  } else {
-    // Desktop: default size
-    boardWidth = 512;
-    boardHeight = 512;
-  }
-
   // Track window width for responsive layout
-  let windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1024;
+  let windowWidth = $state(typeof window !== 'undefined' ? window.innerWidth : 1024);
   
-  // Handle window resize
-  onMount(() => {
-    const handleResize = () => {
-      windowWidth = window.innerWidth;
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  });
-
+  // Compute board dimensions based on window width
+  let computedBoardWidth = $derived(
+    windowWidth < 768 ? Math.min(windowWidth - 32, 400) :
+    windowWidth < 1024 ? Math.min(windowWidth * 0.6, 500) : 
+    512
+  );
+  let computedBoardHeight = $derived(computedBoardWidth);
+  
   // Reactive style for board layout (responsive)
-  $: boardGridStyle = (() => {
+  let boardGridStyle = $derived(
     // For small screens (mobile), stack vertically
-    if (windowWidth < 768) {
-      return 'grid-template-columns: 1fr; gap: 1.5rem;';
-    }
-    // For medium screens (tablet), use smaller side panel
-    else if (windowWidth < 1024) {
-      return 'grid-template-columns: minmax(300px, 1fr) 280px; gap: 1.5rem;';
-    }
+    windowWidth < 768 ? 'grid-template-columns: 1fr; gap: 1.5rem;' :
+    // For medium screens (tablet), use smaller side panel  
+    windowWidth < 1024 ? 'grid-template-columns: minmax(300px, 1fr) 280px; gap: 1.5rem;' :
     // For large screens (desktop), use full layout
-    else {
-      return 'grid-template-columns: minmax(320px, 1fr) 350px; gap: 2rem;';
-    }
-  })();
+    'grid-template-columns: minmax(320px, 1fr) 350px; gap: 2rem;'
+  );
 
   // New Game Modal state
-  let showGameModeModal = false;
-  let selectedMode = 'human_vs_human';
-  let selectedPlayerColor = 'white';
-  let aiEloRating = 1500;
-  let aiTimeLimit = 500; // milliseconds - default to fast play
+  let showGameModeModal = $state(false);
+  let selectedMode = $state('human_vs_human');
+  let selectedPlayerColor = $state('white');
+  let aiEloRating = $state(1500);
+  let aiTimeLimit = $state(500); // milliseconds - default to fast play
   
-  $: currentLang = $languageStore;
-  $: t = languageStore.translations[currentLang];
+  // Language state
+  let currentLang = $derived($languageStore);
+  let t = $derived(languageStore.translations[currentLang]);
 
   // Game state - initialize properly
-  let game;
-  let gameState = {
+  let gameState = $state({
     fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', // Starting position
     moves: [],
     currentMoveIndex: -1,
@@ -87,9 +63,10 @@
     aiTimeLimit: 500, // Default to 0.5 seconds for fast play
     inCheck: false,
     winner: null,
-  };
+  });
 
   // Initialize game properly
+  let game = $state(null);
   try {
     const setup = parseFen(gameState.fen).unwrap();
     game = Chess.fromSetup(setup).unwrap();
@@ -99,36 +76,33 @@
   }
 
   // UI state
-  let uiState = {
+  let uiState = $state({
     selectedSquare: null,
     highlightedSquares: [],
-  };
-  
-  // Force reactive update when uiState changes
-  $: uiState && (uiState = uiState);
+  });
 
   // Engine evaluation
-  let evaluation = {
+  let evaluation = $state({
     cp: 0,
     mate: null,
     bestMove: null,
-  };
+  });
   
   // Analysis state
-  let analysisResult = null;
-  let isAnalyzing = false;
+  let analysisResult = $state(null);
+  let isAnalyzing = $state(false);
   
   // Replay state
-  let showReplayMode = false;
-  let replayGameData = null;
+  let showReplayMode = $state(false);
+  let replayGameData = $state(null);
 
-  let unsubscribeWS;
+  let unsubscribeWS = null;
 
   // No longer need sessionId - only one game exists
   let clientId = generateClientId(); // Unique client identifier
   let clientName = generateClientName(); // Human-readable client name
-  let connectedClients = []; // List of connected clients
-  let boardKey = 0; // Key to force ChessBoard re-render
+  let connectedClients = $state([]); // List of connected clients
+  let boardKey = $state(0); // Key to force ChessBoard re-render
 
   // Generate unique client ID
   function generateClientId() {
@@ -145,6 +119,12 @@
   }
 
   onMount(() => {
+    // Handle window resize
+    const handleResize = () => {
+      windowWidth = window.innerWidth;
+    };
+    window.addEventListener('resize', handleResize);
+    
     // App initialization
     
     // Initialize theme
@@ -202,15 +182,12 @@
       }
     }, 100); // Check every 100ms
     
-    // Optionally you can run a self-test, but doing so can interfere with live searches.
-    // If you really need to test the engine start-up, run it once after the initial page load—
-    // but never while a game is in progress. For now, we disable it to avoid overlapping
-    // search requests that cancel each other.
-  });
-
-  onDestroy(() => {
-    if (unsubscribeWS) unsubscribeWS();
-    stockfish.destroy();
+    // Cleanup
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (unsubscribeWS) unsubscribeWS();
+      stockfish.destroy();
+    };
   });
 
   function handleWebSocketMessage(message) {
@@ -271,7 +248,7 @@
       case 'pgn_replay_loaded':
         // Handle PGN replay loaded from MCP
         // PGN replay loaded
-        if (!message.gameId || message.gameId === '*' || message.gameId === sessionId) {
+        if (!message.gameId || message.gameId === '*') {
           handlePgnReplayLoaded(message.moves, message.autoPlay, message.delayMs);
         }
         break;
@@ -286,7 +263,6 @@
             gameState.aiThinking = false;
             
             // Force update the reactive state
-            gameState = gameState;
             updateGameState();
             
             // Winner by resignation
@@ -372,7 +348,7 @@
     game = Chess.default();
     
     // Create a new gameState object to ensure Svelte detects the change
-    const newGameState = {
+    gameState = {
       fen: resetData.fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
       turn: resetData.turn || 'white',
       moves: [],
@@ -393,9 +369,6 @@
       selectedSquare: null,
       highlightedSquares: []
     };
-    
-    // Assign the new game state
-    gameState = newGameState;
     
     // Force ChessBoard to re-render by changing key
     boardKey = boardKey + 1;
@@ -660,10 +633,11 @@
   async function syncNewGameToServer() {
     console.log('📤 CLIENT: syncNewGameToServer called');
     console.log('📤 CLIENT: Current gameState:', gameState);
-    console.log('📤 CLIENT: WebSocket state:', $webSocketStore);
+    console.log('📤 CLIENT: WebSocket state:', get(webSocketStore));
     
     // Check if WebSocket is connected
-    if (!$webSocketStore.isConnected) {
+    const wsState = get(webSocketStore);
+    if (!wsState.isConnected) {
       console.error('❌ WebSocket not connected, cannot sync new game');
       // Try to reconnect
       const hostname = window.location.hostname || 'localhost';
@@ -699,7 +673,7 @@
   function handleMove(move) {
     // Processing move
     if (!game) return;
-
+    
     const oldFen = gameState.fen;
     
     // Get SAN notation before applying the move
@@ -710,9 +684,15 @@
     game.play(move);
     
     // Update local game state
-    const newFen = makeFen(game.toSetup());
-    gameState.fen = newFen;
-    gameState.turn = game.turn;
+    const setup = game.toSetup();
+    const newFen = makeFen(setup);
+    
+    // Force reactivity by creating new gameState object
+    gameState = {
+      ...gameState,
+      fen: newFen,
+      turn: game.turn
+    };
     
     // Add to move history
     const moveRecord = {
@@ -721,8 +701,13 @@
       ply: gameState.moves.length + 1,
       timestamp: new Date().toISOString()
     };
-    gameState.moves.push(moveRecord);
-    gameState.currentMoveIndex = gameState.moves.length - 1;
+    
+    // Update gameState with new moves array for reactivity
+    gameState = {
+      ...gameState,
+      moves: [...gameState.moves, moveRecord],
+      currentMoveIndex: gameState.moves.length
+    };
     
     // Highlight the move squares
     const uci = makeUci(move);
@@ -746,7 +731,6 @@
       gameState.turn !== gameState.playerColor &&
       !gameState.aiThinking
     ) {
-      // Trigger AI move after human move
       setTimeout(() => makeAIMove(), 300);
     }
   }
@@ -788,7 +772,6 @@
       gameState.turn === gameState.playerColor ||
       gameState.aiThinking
     ) {
-      // AI move blocked
       return;
     }
 
@@ -842,8 +825,14 @@
   function updateGameState() {
     if (!game) return;
     const newFen = makeFen(game.toSetup());
-    gameState.fen = newFen;
-    gameState.turn = game.turn;
+    
+    // Force reactivity with new object
+    gameState = {
+      ...gameState,
+      fen: newFen,
+      turn: game.turn
+    };
+    
     checkGameStatus();
   }
   
@@ -851,8 +840,8 @@
     return color === 'white' ? t.white : t.black;
   }
 
-  async function handleNewGame(mode, playerColor, aiElo, aiTimeLimit, syncToServer = true) {
-    console.log('🎮 CLIENT: handleNewGame called with:', { mode, playerColor, aiElo, aiTimeLimit, syncToServer });
+  async function handleNewGame(mode, playerColor, aiElo, aiTime, syncToServer = true) {
+    console.log('🎮 CLIENT: handleNewGame called with:', { mode, playerColor, aiElo, aiTime, syncToServer });
     // Starting new game
     
     // Immediately clear UI state for better user experience
@@ -865,7 +854,7 @@
       mode: mode,
       playerColor: playerColor,
       aiEloRating: aiElo,
-      aiTimeLimit: aiTimeLimit
+      aiTimeLimit: aiTime
     };
     
     console.log('🎮 CLIENT: Updated gameState before sync:', gameState);
@@ -888,7 +877,7 @@
         playerColor,
         aiThinking: false,
         aiEloRating: aiElo,
-        aiTimeLimit: aiTimeLimit,
+        aiTimeLimit: aiTime,
         inCheck: false,
         winner: null,
       };
@@ -941,29 +930,18 @@
         console.error('🏁 Error sending resignation:', error);
       }
       
-      // Force update the reactive state
-      gameState = gameState;
-      
       // Update the game state
       updateGameState();
       
       // Ensure we're not in replay mode
       showReplayMode = false;
       replayGameData = null;
-      
-      // Optional: Auto-start new game after a delay
-      // setTimeout(() => {
-      //   if (confirm(`${gameState.winner} wins by resignation! Start a new game?`)) {
-      //     handleNewGame(gameState.mode, gameState.playerColor, gameState.aiEloRating, gameState.aiTimeLimit);
-      //   }
-      // }, 1000);
     }
   }
   
   function handleResetAI() {
     // Resetting AI thinking state
     gameState.aiThinking = false;
-    gameState = gameState; // Force reactive update
   }
 
   async function analyzePosition() {
@@ -1017,9 +995,7 @@
     }
   }
   
-
-  
-    function handleLoadCurrentGame() {
+  function handleLoadCurrentGame() {
     // Loading current game for replay
     
     if (gameState.moves.length === 0) {
@@ -1371,6 +1347,25 @@
     }
   }
   
+  // Event handlers
+  function handleModalClick(e) {
+    if (e.target.classList.contains('modal-overlay')) {
+      showGameModeModal = false;
+    }
+  }
+  
+  function handleModalContentClick(e) {
+    e.stopPropagation();
+  }
+  
+  function handlePresetClick(elo, time) {
+    aiEloRating = elo;
+    aiTimeLimit = time;
+  }
+  
+  function handleTimePresetClick(time) {
+    aiTimeLimit = time;
+  }
 
 </script>
 
@@ -1405,9 +1400,9 @@
             <ChessBoard
               fen={gameState.fen}
               turn={gameState.turn}
-              boardWidth={boardWidth}
-              boardHeight={boardHeight}
-              on:move={event => {
+              boardWidth={computedBoardWidth}
+              boardHeight={computedBoardHeight}
+              onmove={(moveData) => {
                 // Move event received
                 
                 // Don't allow moves if we're in replay mode
@@ -1417,7 +1412,6 @@
                 }
                 
                 // ChessBoard sends a move object, but we need the raw move
-                const moveData = event.detail;
                 const move = parseUci(moveData.uci);
                 if (move) {
                   handleMove(move);
@@ -1464,7 +1458,7 @@
                 {/if}
                 <button 
                   class="btn btn-primary"
-                  on:click={handleShowNewGameModal}
+                  onclick={handleShowNewGameModal}
                 >
                   开始新游戏
                 </button>
@@ -1495,7 +1489,7 @@
           <div class="replay-info">
             <h3>🎬 复盘模式</h3>
             <p>正在复盘: {replayGameData?.title || '游戏'}</p>
-            <button class="btn btn-secondary" on:click={handleCloseReplay}>
+            <button class="btn btn-secondary" onclick={handleCloseReplay}>
               返回游戏
             </button>
           </div>
@@ -1514,8 +1508,8 @@
   
   <!-- New Game Modal -->
   {#if showGameModeModal}
-    <div class="modal-overlay" on:click={() => showGameModeModal = false}>
-      <div class="modal" on:click|stopPropagation>
+    <div class="modal-overlay" onclick={handleModalClick}>
+      <div class="modal" onclick={handleModalContentClick}>
         <h3>{t.selectGameMode}</h3>
         
         <div class="mode-selection">
@@ -1607,16 +1601,16 @@
                   <span>{t.deepThinking} (5{t.seconds})</span>
                 </div>
                 <div class="quick-presets">
-                  <button type="button" class="preset-btn" on:click={() => aiTimeLimit = 200}>
+                  <button type="button" class="preset-btn" onclick={() => handleTimePresetClick(200)}>
                     {t.instant || 'Instant'} (0.2s)
                   </button>
-                  <button type="button" class="preset-btn" on:click={() => aiTimeLimit = 500}>
+                  <button type="button" class="preset-btn" onclick={() => handleTimePresetClick(500)}>
                     {t.fast || 'Fast'} (0.5s)
                   </button>
-                  <button type="button" class="preset-btn" on:click={() => aiTimeLimit = 1000}>
+                  <button type="button" class="preset-btn" onclick={() => handleTimePresetClick(1000)}>
                     {t.normal || 'Normal'} (1s)
                   </button>
-                  <button type="button" class="preset-btn" on:click={() => aiTimeLimit = 3000}>
+                  <button type="button" class="preset-btn" onclick={() => handleTimePresetClick(3000)}>
                     {t.deep || 'Deep'} (3s)
                   </button>
                 </div>
@@ -1629,19 +1623,19 @@
               <div class="setting-item">
                 <h5>{t.quickPresets || 'Quick Presets'}</h5>
                 <div class="combo-presets">
-                  <button type="button" class="combo-btn" on:click={() => {aiEloRating = 1000; aiTimeLimit = 200;}}>
+                  <button type="button" class="combo-btn" onclick={() => handlePresetClick(1000, 200)}>
                     📚 {t.beginner || 'Beginner'}<br/>
                     <small>1000 ELO • 0.2s</small>
                   </button>
-                  <button type="button" class="combo-btn" on:click={() => {aiEloRating = 1500; aiTimeLimit = 500;}}>
+                  <button type="button" class="combo-btn" onclick={() => handlePresetClick(1500, 500)}>
                     🎯 {t.intermediate || 'Intermediate'}<br/>
                     <small>1500 ELO • 0.5s</small>
                   </button>
-                  <button type="button" class="combo-btn" on:click={() => {aiEloRating = 2000; aiTimeLimit = 1000;}}>
+                  <button type="button" class="combo-btn" onclick={() => handlePresetClick(2000, 1000)}>
                     🏆 {t.advanced || 'Advanced'}<br/>
                     <small>2000 ELO • 1s</small>
                   </button>
-                  <button type="button" class="combo-btn" on:click={() => {aiEloRating = 2500; aiTimeLimit = 3000;}}>
+                  <button type="button" class="combo-btn" onclick={() => handlePresetClick(2500, 3000)}>
                     👑 {t.master || 'Master'}<br/>
                     <small>2500 ELO • 3s</small>
                   </button>
@@ -1652,10 +1646,10 @@
         {/if}
 
         <div class="modal-actions">
-          <button class="btn btn-secondary" on:click={() => showGameModeModal = false}>
+          <button class="btn btn-secondary" onclick={() => showGameModeModal = false}>
             {t.cancel}
           </button>
-          <button class="btn btn-primary" on:click={startNewGame}>
+          <button class="btn btn-primary" onclick={startNewGame}>
             {t.startGame}
           </button>
         </div>
